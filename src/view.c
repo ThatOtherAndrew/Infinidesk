@@ -14,6 +14,8 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_compositor.h>
+#include <wlr/render/pass.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/view.h"
@@ -196,6 +198,17 @@ void view_update_scene_position(struct infinidesk_view *view) {
     wlr_scene_node_set_position(&view->scene_tree->node,
         (int)round(screen_x) - geo.x,
         (int)round(screen_y) - geo.y);
+
+    /*
+     * Note: wlroots scene graph doesn't support arbitrary scaling of scene trees.
+     * For true visual zoom, we would need to either:
+     * 1. Use custom rendering with wlr_renderer transforms
+     * 2. Request clients to resize (semantic zoom)
+     * 3. Use a different compositor architecture
+     *
+     * For now, windows maintain their native size and only positions scale.
+     * This is similar to how some canvas apps handle extreme zoom levels.
+     */
 }
 
 void view_move_begin(struct infinidesk_view *view,
@@ -370,4 +383,81 @@ static void handle_set_app_id(struct wl_listener *listener, void *data) {
 
     wlr_log(WLR_DEBUG, "View %p app_id: %s",
             (void *)view, view->xdg_toplevel->app_id ?: "(null)");
+}
+
+/*
+ * Surface iterator data for rendering.
+ */
+struct render_data {
+    struct wlr_render_pass *pass;
+    struct infinidesk_view *view;
+    double scale;
+    int base_x;
+    int base_y;
+};
+
+/*
+ * Render a single surface (called for each surface in the tree).
+ */
+static void render_surface_iterator(struct wlr_surface *surface,
+                                    int sx, int sy, void *user_data)
+{
+    struct render_data *data = user_data;
+
+    /* Get the texture for this surface */
+    struct wlr_texture *texture = wlr_surface_get_texture(surface);
+    if (!texture) {
+        return;
+    }
+
+    /* Calculate scaled dimensions */
+    int src_width = surface->current.width;
+    int src_height = surface->current.height;
+    int dst_width = (int)round(src_width * data->scale);
+    int dst_height = (int)round(src_height * data->scale);
+
+    /* Calculate scaled position */
+    int dst_x = data->base_x + (int)round(sx * data->scale);
+    int dst_y = data->base_y + (int)round(sy * data->scale);
+
+    /* Render the texture with scaling */
+    wlr_render_pass_add_texture(data->pass, &(struct wlr_render_texture_options){
+        .texture = texture,
+        .dst_box = {
+            .x = dst_x,
+            .y = dst_y,
+            .width = dst_width,
+            .height = dst_height,
+        },
+        .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+    });
+}
+
+void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
+    struct infinidesk_canvas *canvas = &view->server->canvas;
+    struct wlr_xdg_surface *xdg_surface = view->xdg_toplevel->base;
+
+    if (!xdg_surface->surface->mapped) {
+        return;
+    }
+
+    /* Convert canvas coordinates to screen coordinates */
+    double screen_x, screen_y;
+    canvas_to_screen(canvas, view->x, view->y, &screen_x, &screen_y);
+
+    /* Account for XDG surface geometry offset (for CSD windows) */
+    struct wlr_box geo;
+    wlr_xdg_surface_get_geometry(xdg_surface, &geo);
+
+    /* Set up render data */
+    struct render_data data = {
+        .pass = pass,
+        .view = view,
+        .scale = canvas->scale,
+        .base_x = (int)round(screen_x) - (int)round(geo.x * canvas->scale),
+        .base_y = (int)round(screen_y) - (int)round(geo.y * canvas->scale),
+    };
+
+    /* Render all surfaces in the XDG surface tree (includes subsurfaces) */
+    wlr_xdg_surface_for_each_surface(xdg_surface, render_surface_iterator, &data);
 }

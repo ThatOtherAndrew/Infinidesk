@@ -3,20 +3,30 @@
  * Copyright (c) 2025
  * SPDX-License-Identifier: MIT
  *
- * output.c - Output (monitor) management
+ * output.c - Output (monitor) management with custom rendering
  */
 
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdlib.h>
+#include <time.h>
 
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/render/pass.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
+#include "infinidesk/view.h"
+#include "infinidesk/canvas.h"
+
+/* Background colour */
+static const float bg_colour[4] = { 0.18f, 0.18f, 0.18f, 1.0f };
+
+/* Forward declaration */
+static void output_render_custom(struct infinidesk_output *output);
 
 void output_init(struct infinidesk_server *server) {
     server->new_output.notify = handle_new_output;
@@ -77,7 +87,7 @@ void handle_new_output(struct wl_listener *listener, void *data) {
     struct wlr_output_layout_output *l_output =
         wlr_output_layout_add_auto(server->output_layout, wlr_output);
 
-    /* Create scene output */
+    /* Create scene output (still needed for some operations) */
     output->scene_output = wlr_scene_output_create(server->scene, wlr_output);
     wlr_scene_output_layout_add_output(
         server->scene_output_layout, l_output, output->scene_output);
@@ -93,14 +103,70 @@ void output_handle_frame(struct wl_listener *listener, void *data) {
     struct infinidesk_output *output =
         wl_container_of(listener, output, frame);
 
-    /* Render the scene to this output */
-    struct wlr_scene_output *scene_output = output->scene_output;
-    wlr_scene_output_commit(scene_output, NULL);
+    /* Use custom rendering pipeline */
+    output_render_custom(output);
+}
 
-    /* Send frame done to all visible surfaces */
+/*
+ * Custom rendering with canvas transforms.
+ * This bypasses the scene graph to allow arbitrary scaling of surfaces.
+ */
+static void output_render_custom(struct infinidesk_output *output) {
+    struct infinidesk_server *server = output->server;
+    struct wlr_output *wlr_output = output->wlr_output;
+
+    /* Initialise output state */
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+
+    /* Begin a render pass */
+    struct wlr_render_pass *pass = wlr_output_begin_render_pass(
+        wlr_output, &state, NULL, NULL);
+    if (!pass) {
+        wlr_output_state_finish(&state);
+        return;
+    }
+
+    /* Get output dimensions */
+    int width, height;
+    wlr_output_effective_resolution(wlr_output, &width, &height);
+
+    /* Clear with background colour */
+    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+        .box = { .width = width, .height = height },
+        .color = {
+            .r = bg_colour[0],
+            .g = bg_colour[1],
+            .b = bg_colour[2],
+            .a = bg_colour[3],
+        },
+    });
+
+    /* Render views back-to-front (reverse iteration since list is front-to-back) */
+    struct infinidesk_view *view;
+    wl_list_for_each_reverse(view, &server->views, link) {
+        if (!view->xdg_toplevel->base->surface->mapped) {
+            continue;
+        }
+        view_render(view, pass);
+    }
+
+    /* Submit the render pass */
+    wlr_render_pass_submit(pass);
+
+    /* Commit the output */
+    wlr_output_commit_state(wlr_output, &state);
+    wlr_output_state_finish(&state);
+
+    /* Send frame done to all mapped surfaces */
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    wlr_scene_output_send_frame_done(scene_output, &now);
+
+    wl_list_for_each(view, &server->views, link) {
+        if (view->xdg_toplevel->base->surface->mapped) {
+            wlr_surface_send_frame_done(view->xdg_toplevel->base->surface, &now);
+        }
+    }
 }
 
 void output_handle_request_state(struct wl_listener *listener, void *data) {

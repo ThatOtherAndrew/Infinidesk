@@ -12,6 +12,7 @@
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/render/pass.h>
 
 /* Forward declaration */
 struct infinidesk_server;
@@ -113,5 +114,10 @@ void view_move_end(struct infinidesk_view *view);
  * Close the view (request the client to close).
  */
 void view_close(struct infinidesk_view *view);
+
+/*
+ * Render the view to a render pass with the current canvas transform.
+ */
+void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass);
 
 #endif /* INFINIDESK_VIEW_H */
