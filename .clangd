@@ -1,0 +1,4 @@
+CompileFlags:
+  Add:
+    - "-isystem/nix/store/rwalsamz4246k8f1zzxa54qx7w3fbzdg-glibc-2.42-47-dev/include"
+    - "-I./build"
