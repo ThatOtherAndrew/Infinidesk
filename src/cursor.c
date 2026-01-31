@@ -1,0 +1,280 @@
+/*
+ * Infinidesk - Infinite Canvas Wayland Compositor
+ * Copyright (c) 2025
+ * SPDX-License-Identifier: MIT
+ *
+ * cursor.c - Cursor and pointer input handling
+ */
+
+#define _POSIX_C_SOURCE 200809L
+
+#include <linux/input-event-codes.h>
+
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_pointer.h>
+#include <wlr/util/log.h>
+
+#include "infinidesk/cursor.h"
+#include "infinidesk/server.h"
+#include "infinidesk/view.h"
+#include "infinidesk/canvas.h"
+
+/* Zoom factor for scroll wheel zoom */
+#define ZOOM_SCROLL_FACTOR 1.1
+
+void cursor_init(struct infinidesk_server *server) {
+    /* Create the cursor */
+    server->cursor = wlr_cursor_create();
+    if (!server->cursor) {
+        wlr_log(WLR_ERROR, "Failed to create cursor");
+        return;
+    }
+
+    /* Attach cursor to output layout */
+    wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
+
+    /* Create the xcursor manager for cursor themes */
+    server->xcursor_manager = wlr_xcursor_manager_create(NULL, 24);
+    if (!server->xcursor_manager) {
+        wlr_log(WLR_ERROR, "Failed to create xcursor manager");
+        wlr_cursor_destroy(server->cursor);
+        server->cursor = NULL;
+        return;
+    }
+
+    /* Set up cursor event listeners */
+    server->cursor_motion.notify = cursor_handle_motion;
+    wl_signal_add(&server->cursor->events.motion, &server->cursor_motion);
+
+    server->cursor_motion_absolute.notify = cursor_handle_motion_absolute;
+    wl_signal_add(&server->cursor->events.motion_absolute,
+                  &server->cursor_motion_absolute);
+
+    server->cursor_button.notify = cursor_handle_button;
+    wl_signal_add(&server->cursor->events.button, &server->cursor_button);
+
+    server->cursor_axis.notify = cursor_handle_axis;
+    wl_signal_add(&server->cursor->events.axis, &server->cursor_axis);
+
+    server->cursor_frame.notify = cursor_handle_frame;
+    wl_signal_add(&server->cursor->events.frame, &server->cursor_frame);
+
+    /* Set up seat request_set_cursor listener */
+    server->request_cursor.notify = cursor_handle_request_cursor;
+    wl_signal_add(&server->seat->events.request_set_cursor,
+                  &server->request_cursor);
+
+    /* Initialise cursor state */
+    server->cursor_mode = INFINIDESK_CURSOR_PASSTHROUGH;
+    server->grabbed_view = NULL;
+    server->super_pressed = false;
+
+    wlr_log(WLR_DEBUG, "Cursor handling initialised");
+}
+
+void cursor_handle_motion(struct wl_listener *listener, void *data) {
+    struct infinidesk_server *server =
+        wl_container_of(listener, server, cursor_motion);
+    struct wlr_pointer_motion_event *event = data;
+
+    /* Move the cursor */
+    wlr_cursor_move(server->cursor, &event->pointer->base,
+                    event->delta_x, event->delta_y);
+
+    /* Process the motion */
+    cursor_process_motion(server, event->time_msec);
+}
+
+void cursor_handle_motion_absolute(struct wl_listener *listener, void *data) {
+    struct infinidesk_server *server =
+        wl_container_of(listener, server, cursor_motion_absolute);
+    struct wlr_pointer_motion_absolute_event *event = data;
+
+    /* Warp to the absolute position */
+    wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
+                             event->x, event->y);
+
+    /* Process the motion */
+    cursor_process_motion(server, event->time_msec);
+}
+
+void cursor_handle_button(struct wl_listener *listener, void *data) {
+    struct infinidesk_server *server =
+        wl_container_of(listener, server, cursor_button);
+    struct wlr_pointer_button_event *event = data;
+
+    /* Notify the seat of the button event */
+    wlr_seat_pointer_notify_button(server->seat,
+        event->time_msec, event->button, event->state);
+
+    if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        /* Button pressed */
+        double sx, sy;
+        struct wlr_surface *surface = NULL;
+        struct infinidesk_view *view = server_view_at(server,
+            server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+
+        /* Check for Super key modifier actions */
+        if (server->super_pressed) {
+            if (event->button == BTN_LEFT && view) {
+                /* Super + Left click: Begin window move */
+                wlr_log(WLR_DEBUG, "Beginning view move");
+                server->cursor_mode = INFINIDESK_CURSOR_MOVE;
+                server->grabbed_view = view;
+                server->grab_x = server->cursor->x;
+                server->grab_y = server->cursor->y;
+
+                /* Convert cursor position to canvas coordinates */
+                double canvas_x, canvas_y;
+                screen_to_canvas(&server->canvas,
+                    server->cursor->x, server->cursor->y,
+                    &canvas_x, &canvas_y);
+                view_move_begin(view, canvas_x, canvas_y);
+
+                /* Focus the view being moved */
+                view_focus(view);
+                return;
+            } else if (event->button == BTN_RIGHT) {
+                /* Super + Right click: Begin canvas pan */
+                wlr_log(WLR_DEBUG, "Beginning canvas pan");
+                server->cursor_mode = INFINIDESK_CURSOR_PAN;
+                canvas_pan_begin(&server->canvas,
+                    server->cursor->x, server->cursor->y);
+                return;
+            }
+        }
+
+        /* Regular click - focus the view if we clicked on one */
+        if (view) {
+            view_focus(view);
+        }
+
+    } else {
+        /* Button released */
+        if (server->cursor_mode == INFINIDESK_CURSOR_MOVE) {
+            /* End window move */
+            if (server->grabbed_view) {
+                view_move_end(server->grabbed_view);
+            }
+            cursor_reset_mode(server);
+
+        } else if (server->cursor_mode == INFINIDESK_CURSOR_PAN) {
+            /* End canvas pan */
+            canvas_pan_end(&server->canvas);
+            cursor_reset_mode(server);
+        }
+    }
+}
+
+void cursor_handle_axis(struct wl_listener *listener, void *data) {
+    struct infinidesk_server *server =
+        wl_container_of(listener, server, cursor_axis);
+    struct wlr_pointer_axis_event *event = data;
+
+    /* Check for Super modifier for canvas operations */
+    if (server->super_pressed) {
+        if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+            /* Super + Scroll: Zoom canvas */
+            double factor = (event->delta < 0) ?
+                ZOOM_SCROLL_FACTOR : (1.0 / ZOOM_SCROLL_FACTOR);
+            canvas_zoom(&server->canvas, factor,
+                server->cursor->x, server->cursor->y);
+            return;
+        } else if (event->orientation == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+            /* Super + Horizontal scroll: Pan canvas horizontally */
+            canvas_pan_delta(&server->canvas, -event->delta, 0);
+            return;
+        }
+    }
+
+    /* Normal scroll - pass to client */
+    wlr_seat_pointer_notify_axis(server->seat,
+        event->time_msec, event->orientation, event->delta,
+        event->delta_discrete, event->source, event->relative_direction);
+}
+
+void cursor_handle_frame(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct infinidesk_server *server =
+        wl_container_of(listener, server, cursor_frame);
+
+    /* Notify the seat of the frame event */
+    wlr_seat_pointer_notify_frame(server->seat);
+}
+
+void cursor_handle_request_cursor(struct wl_listener *listener, void *data) {
+    struct infinidesk_server *server =
+        wl_container_of(listener, server, request_cursor);
+    struct wlr_seat_pointer_request_set_cursor_event *event = data;
+
+    /* Only honour cursor image requests from the focused client */
+    struct wlr_seat_client *focused_client =
+        server->seat->pointer_state.focused_client;
+
+    if (focused_client == event->seat_client) {
+        /* Set the cursor surface from the client */
+        wlr_cursor_set_surface(server->cursor, event->surface,
+                               event->hotspot_x, event->hotspot_y);
+    }
+}
+
+void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
+    switch (server->cursor_mode) {
+    case INFINIDESK_CURSOR_MOVE: {
+        /* Update the view position during move */
+        if (server->grabbed_view) {
+            double canvas_x, canvas_y;
+            screen_to_canvas(&server->canvas,
+                server->cursor->x, server->cursor->y,
+                &canvas_x, &canvas_y);
+            view_move_update(server->grabbed_view, canvas_x, canvas_y);
+        }
+        return;
+    }
+
+    case INFINIDESK_CURSOR_PAN: {
+        /* Update the viewport during pan */
+        canvas_pan_update(&server->canvas,
+            server->cursor->x, server->cursor->y);
+        return;
+    }
+
+    case INFINIDESK_CURSOR_RESIZE:
+        /* Resize not yet implemented */
+        return;
+
+    case INFINIDESK_CURSOR_PASSTHROUGH:
+    default:
+        break;
+    }
+
+    /* Passthrough mode: update focus and cursor image */
+    double sx, sy;
+    struct wlr_surface *surface = NULL;
+    struct infinidesk_view *view = server_view_at(server,
+        server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+
+    if (!view) {
+        /* No view under cursor - set default cursor */
+        wlr_cursor_set_xcursor(server->cursor,
+            server->xcursor_manager, "default");
+    }
+
+    if (surface) {
+        /* Notify the seat of the pointer entering/moving on the surface */
+        wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
+        wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
+    } else {
+        /* Clear pointer focus if not on a surface */
+        wlr_seat_pointer_clear_focus(server->seat);
+    }
+}
+
+void cursor_reset_mode(struct infinidesk_server *server) {
+    server->cursor_mode = INFINIDESK_CURSOR_PASSTHROUGH;
+    server->grabbed_view = NULL;
+
+    wlr_log(WLR_DEBUG, "Cursor mode reset to passthrough");
+}

@@ -1,0 +1,74 @@
+project('infinidesk', 'c',
+  version: '0.1.0',
+  license: 'MIT',
+  default_options: [
+    'c_std=c11',
+    'warning_level=2',
+    'werror=false',
+  ],
+)
+
+cc = meson.get_compiler('c')
+
+# Dependencies
+wlroots = dependency('wlroots-0.18', version: '>= 0.18.0', required: false)
+if not wlroots.found()
+  wlroots = dependency('wlroots', version: '>= 0.18.0')
+endif
+
+wayland_server = dependency('wayland-server')
+wayland_protos = dependency('wayland-protocols')
+xkbcommon = dependency('xkbcommon')
+pixman = dependency('pixman-1')
+math = cc.find_library('m', required: false)
+
+# Wayland scanner for protocol generation
+wayland_scanner = find_program('wayland-scanner')
+wayland_protocols_dir = wayland_protos.get_variable('pkgdatadir')
+
+# Generate XDG shell protocol headers
+xdg_shell_xml = wayland_protocols_dir / 'stable/xdg-shell/xdg-shell.xml'
+
+xdg_shell_protocol_h = custom_target(
+  'xdg-shell-protocol.h',
+  input: xdg_shell_xml,
+  output: 'xdg-shell-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+
+# Include directories
+infinidesk_inc = include_directories('include')
+
+# Source files
+infinidesk_sources = files(
+  'src/main.c',
+  'src/server.c',
+  'src/canvas.c',
+  'src/view.c',
+  'src/input.c',
+  'src/keyboard.c',
+  'src/cursor.c',
+  'src/output.c',
+  'src/xdg_shell.c',
+)
+
+# Compiler flags
+add_project_arguments(
+  '-DWLR_USE_UNSTABLE',
+  language: 'c',
+)
+
+# Main executable
+executable('infinidesk',
+  infinidesk_sources,
+  xdg_shell_protocol_h,
+  include_directories: infinidesk_inc,
+  dependencies: [
+    wlroots,
+    wayland_server,
+    xkbcommon,
+    pixman,
+    math,
+  ],
+  install: true,
+)
