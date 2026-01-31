@@ -1,5 +1,6 @@
 .cache/
 build/
+result
 
 # Created by https://www.toptal.com/developers/gitignore/api/c,meson
 # Edit at https://www.toptal.com/developers/gitignore?templates=c,meson

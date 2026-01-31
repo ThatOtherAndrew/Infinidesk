@@ -175,18 +175,23 @@ void cursor_handle_axis(struct wl_listener *listener, void *data) {
 
     /* Check for Super modifier for canvas operations */
     if (server->super_pressed) {
+        /*
+         * Super + Scroll: Zoom canvas (vertical) or pan (horizontal)
+         *
+         * Note: Touchpads often send both vertical and horizontal events
+         * simultaneously. We only act on vertical for zoom to avoid
+         * diagonal movement artifacts from small horizontal deltas.
+         */
         if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-            /* Super + Scroll: Zoom canvas */
+            /* Super + Vertical scroll: Zoom canvas */
             double factor = (event->delta < 0) ?
                 ZOOM_SCROLL_FACTOR : (1.0 / ZOOM_SCROLL_FACTOR);
             canvas_zoom(&server->canvas, factor,
                 server->cursor->x, server->cursor->y);
-            return;
-        } else if (event->orientation == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
-            /* Super + Horizontal scroll: Pan canvas horizontally */
-            canvas_pan_delta(&server->canvas, -event->delta, 0);
-            return;
         }
+        /* Ignore horizontal scroll when Super is held - it's usually noise
+         * from touchpad when user intends to scroll vertically */
+        return;
     }
 
     /* Normal scroll - pass to client */

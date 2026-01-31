@@ -50,6 +50,7 @@ infinidesk_sources = files(
   'src/cursor.c',
   'src/output.c',
   'src/xdg_shell.c',
+  'src/background.c',
 )
 
 # Compiler flags

@@ -90,9 +90,10 @@ void keyboard_handle_key(struct wl_listener *listener, void *data) {
     /* Get current modifiers */
     uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
 
-    /* Track Super key state */
+    /* Track Alt key state (used for canvas operations)
+     * Note: Using Alt instead of Super for better nested compositor support */
     for (int i = 0; i < nsyms; i++) {
-        if (syms[i] == XKB_KEY_Super_L || syms[i] == XKB_KEY_Super_R) {
+        if (syms[i] == XKB_KEY_Alt_L || syms[i] == XKB_KEY_Alt_R) {
             server->super_pressed = (event->state == WL_KEYBOARD_KEY_STATE_PRESSED);
             break;
         }
@@ -152,21 +153,21 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
                                 xkb_keysym_t sym)
 {
     /*
-     * Compositor keybindings:
-     * - Super + Enter:  Launch terminal (kitty)
-     * - Super + Q:      Close focused window
-     * - Super + Escape: Exit compositor
+     * Compositor keybindings (using Alt for nested compositor compatibility):
+     * - Alt + Enter:  Launch terminal (kitty)
+     * - Alt + Q:      Close focused window
+     * - Alt + Escape: Exit compositor
      */
 
-    /* Check for Super modifier */
-    if (!(modifiers & WLR_MODIFIER_LOGO)) {
+    /* Check for Alt modifier */
+    if (!(modifiers & WLR_MODIFIER_ALT)) {
         return false;
     }
 
     switch (sym) {
     case XKB_KEY_Return:
     case XKB_KEY_KP_Enter:
-        /* Super + Enter: Launch terminal */
+        /* Alt + Enter: Launch terminal */
         wlr_log(WLR_INFO, "Launching terminal");
         if (fork() == 0) {
             execl("/bin/sh", "/bin/sh", "-c", "kitty", (char *)NULL);
@@ -176,7 +177,7 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
 
     case XKB_KEY_q:
     case XKB_KEY_Q:
-        /* Super + Q: Close focused window */
+        /* Alt + Q: Close focused window */
         if (!wl_list_empty(&server->views)) {
             struct infinidesk_view *view =
                 wl_container_of(server->views.next, view, link);
@@ -186,7 +187,7 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
         return true;
 
     case XKB_KEY_Escape:
-        /* Super + Escape: Exit compositor */
+        /* Alt + Escape: Exit compositor */
         wlr_log(WLR_INFO, "Exiting compositor");
         wl_display_terminate(server->wl_display);
         return true;

@@ -32,6 +32,7 @@
 #include "infinidesk/cursor.h"
 #include "infinidesk/xdg_shell.h"
 #include "infinidesk/view.h"
+#include "infinidesk/background.h"
 
 bool server_init(struct infinidesk_server *server) {
     wlr_log(WLR_DEBUG, "Initialising Wayland display");
@@ -106,7 +107,14 @@ bool server_init(struct infinidesk_server *server) {
         goto error_output_layout;
     }
 
-    /* Create a tree for views within the scene */
+    /* Create a tree for the background (rendered first, behind everything) */
+    server->background_tree = wlr_scene_tree_create(&server->scene->tree);
+    if (!server->background_tree) {
+        wlr_log(WLR_ERROR, "Failed to create background tree");
+        goto error_scene;
+    }
+
+    /* Create a tree for views within the scene (rendered on top of background) */
     server->view_tree = wlr_scene_tree_create(&server->scene->tree);
     if (!server->view_tree) {
         wlr_log(WLR_ERROR, "Failed to create view tree");
@@ -140,6 +148,9 @@ bool server_init(struct infinidesk_server *server) {
 
     /* Initialise XDG shell */
     xdg_shell_init(server);
+
+    /* Initialise background */
+    background_init(server);
 
     wlr_log(WLR_INFO, "Server initialisation complete");
     return true;

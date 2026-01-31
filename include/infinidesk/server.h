@@ -54,6 +54,7 @@ struct infinidesk_server {
 
     /* Scene graph */
     struct wlr_scene *scene;
+    struct wlr_scene_tree *background_tree;  /* Tree for background */
     struct wlr_scene_tree *view_tree;  /* Tree for window views */
     struct wlr_scene_output_layout *scene_output_layout;
 

@@ -32,12 +32,12 @@ static void print_usage(const char *prog_name) {
         "Infinidesk is an infinite canvas Wayland compositor.\n"
         "\n"
         "Keybindings:\n"
-        "  Super + Enter        Launch terminal (kitty)\n"
-        "  Super + Q            Close focused window\n"
-        "  Super + Escape       Exit compositor\n"
-        "  Super + Left-drag    Move window\n"
-        "  Super + Right-drag   Pan canvas\n"
-        "  Two-finger scroll    Pan canvas (with Super held)\n",
+        "  Alt + Enter        Launch terminal (kitty)\n"
+        "  Alt + Q            Close focused window\n"
+        "  Alt + Escape       Exit compositor\n"
+        "  Alt + Left-drag    Move window\n"
+        "  Alt + Right-drag   Pan canvas\n"
+        "  Alt + Scroll       Zoom canvas\n",
         prog_name);
 }
 
