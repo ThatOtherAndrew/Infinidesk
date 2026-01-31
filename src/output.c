@@ -26,8 +26,10 @@
 /* Background colour */
 static const float bg_colour[4] = { 0.18f, 0.18f, 0.18f, 1.0f };
 
-/* Forward declaration */
+/* Forward declarations */
 static void output_render_custom(struct infinidesk_output *output);
+static void send_frame_done_iterator(struct wlr_surface *surface,
+                                     int sx, int sy, void *data);
 
 void output_init(struct infinidesk_server *server) {
     server->new_output.notify = handle_new_output;
@@ -131,6 +133,7 @@ static void output_render_custom(struct infinidesk_output *output) {
     struct wlr_render_pass *pass = wlr_output_begin_render_pass(
         wlr_output, &state, NULL, NULL);
     if (!pass) {
+        wlr_log(WLR_ERROR, "Failed to begin render pass");
         wlr_output_state_finish(&state);
         return;
     }
@@ -162,19 +165,32 @@ static void output_render_custom(struct infinidesk_output *output) {
     /* Submit the render pass */
     wlr_render_pass_submit(pass);
 
-    /* Commit the output */
-    wlr_output_commit_state(wlr_output, &state);
+    /* Commit the output - check for failure */
+    if (!wlr_output_commit_state(wlr_output, &state)) {
+        wlr_log(WLR_ERROR, "Failed to commit output state");
+    }
     wlr_output_state_finish(&state);
 
-    /* Send frame done to all mapped surfaces */
+    /* Send frame done to all mapped surfaces (including subsurfaces) */
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
 
     wl_list_for_each(view, &server->views, link) {
         if (view->xdg_toplevel->base->surface->mapped) {
-            wlr_surface_send_frame_done(view->xdg_toplevel->base->surface, &now);
+            wlr_xdg_surface_for_each_surface(view->xdg_toplevel->base,
+                send_frame_done_iterator, &now);
         }
     }
+}
+
+/* Iterator to send frame_done to each surface */
+static void send_frame_done_iterator(struct wlr_surface *surface,
+                                     int sx, int sy, void *data)
+{
+    (void)sx;
+    (void)sy;
+    struct timespec *now = data;
+    wlr_surface_send_frame_done(surface, now);
 }
 
 void output_handle_request_state(struct wl_listener *listener, void *data) {

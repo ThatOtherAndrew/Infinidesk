@@ -418,6 +418,16 @@ static void render_surface_iterator(struct wlr_surface *surface,
     int logical_height = surface->current.height;
     int buffer_scale = surface->current.scale;
 
+    /* Skip surfaces with no size */
+    if (logical_width <= 0 || logical_height <= 0) {
+        return;
+    }
+
+    /* Sanity check buffer scale */
+    if (buffer_scale <= 0) {
+        buffer_scale = 1;
+    }
+
     /* Calculate destination position */
     int dst_x = data->base_x + (int)round(sx * data->scale);
     int dst_y = data->base_y + (int)round(sy * data->scale);
@@ -425,6 +435,11 @@ static void render_surface_iterator(struct wlr_surface *surface,
     /* Calculate scaled destination size */
     int dst_width = (int)round(logical_width * data->scale);
     int dst_height = (int)round(logical_height * data->scale);
+
+    /* Skip if destination has no size */
+    if (dst_width <= 0 || dst_height <= 0) {
+        return;
+    }
 
     /*
      * Set up source box to use the full texture.
