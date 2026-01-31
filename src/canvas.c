@@ -15,7 +15,6 @@
 #include "infinidesk/canvas.h"
 #include "infinidesk/server.h"
 #include "infinidesk/view.h"
-#include "infinidesk/background.h"
 
 /* Minimum and maximum zoom levels */
 #define ZOOM_MIN 0.1
@@ -161,9 +160,7 @@ void canvas_update_view_positions(struct infinidesk_canvas *canvas) {
     wl_list_for_each(view, &canvas->server->views, link) {
         view_update_scene_position(view);
     }
-
-    /* Update background tiles */
-    background_update(canvas->server);
+    /* Note: Background is now rendered directly in the custom render pass */
 }
 
 void canvas_get_viewport_centre(struct infinidesk_canvas *canvas,

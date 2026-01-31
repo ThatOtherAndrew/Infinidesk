@@ -14,6 +14,8 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_compositor.h>
+#include <wlr/render/pass.h>
 #include <wlr/util/log.h>
 #include <wlr/xwayland/xwayland.h>
 #include <xcb/xproto.h>
@@ -650,4 +652,124 @@ static void handle_xwayland_set_class(struct wl_listener *listener, void *data) 
 
     wlr_log(WLR_DEBUG, "XWayland view %p class: %s",
             (void *)view, view->xwayland_surface->class ?: "(null)");
+}
+
+/*
+ * Surface iterator data for rendering.
+ */
+struct render_data {
+    struct wlr_render_pass *pass;
+    struct infinidesk_view *view;
+    double scale;
+    int base_x;
+    int base_y;
+};
+
+/*
+ * Render a single surface (called for each surface in the tree).
+ */
+static void render_surface_iterator(struct wlr_surface *surface,
+                                    int sx, int sy, void *user_data)
+{
+    struct render_data *data = user_data;
+
+    /* Get the texture for this surface */
+    struct wlr_texture *texture = wlr_surface_get_texture(surface);
+    if (!texture) {
+        return;
+    }
+
+    /*
+     * Surface dimensions in logical coordinates.
+     * The texture may be larger if client uses buffer scale > 1.
+     */
+    int logical_width = surface->current.width;
+    int logical_height = surface->current.height;
+    int buffer_scale = surface->current.scale;
+
+    /* Skip surfaces with no size */
+    if (logical_width <= 0 || logical_height <= 0) {
+        return;
+    }
+
+    /* Sanity check buffer scale */
+    if (buffer_scale <= 0) {
+        buffer_scale = 1;
+    }
+
+    /* Calculate destination position */
+    int dst_x = data->base_x + (int)round(sx * data->scale);
+    int dst_y = data->base_y + (int)round(sy * data->scale);
+
+    /* Calculate scaled destination size */
+    int dst_width = (int)round(logical_width * data->scale);
+    int dst_height = (int)round(logical_height * data->scale);
+
+    /* Skip if destination has no size */
+    if (dst_width <= 0 || dst_height <= 0) {
+        return;
+    }
+
+    /*
+     * Set up source box to use the full texture.
+     * The texture dimensions are logical_size * buffer_scale.
+     */
+    struct wlr_fbox src_box = {
+        .x = 0,
+        .y = 0,
+        .width = logical_width * buffer_scale,
+        .height = logical_height * buffer_scale,
+    };
+
+    /*
+     * Choose filter mode:
+     * - At scale 1.0 with buffer_scale 1: no filtering needed (pixel-perfect)
+     * - Otherwise: use bilinear for smooth scaling
+     */
+    enum wlr_scale_filter_mode filter = WLR_SCALE_FILTER_BILINEAR;
+    if (data->scale == 1.0 && buffer_scale == 1) {
+        filter = WLR_SCALE_FILTER_NEAREST;
+    }
+
+    wlr_render_pass_add_texture(data->pass, &(struct wlr_render_texture_options){
+        .texture = texture,
+        .src_box = src_box,
+        .dst_box = {
+            .x = dst_x,
+            .y = dst_y,
+            .width = dst_width,
+            .height = dst_height,
+        },
+        .filter_mode = filter,
+        .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+    });
+}
+
+void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
+    struct infinidesk_canvas *canvas = &view->server->canvas;
+    struct wlr_xdg_surface *xdg_surface = view->xdg_toplevel->base;
+
+    if (!xdg_surface->surface->mapped) {
+        return;
+    }
+
+    /* Convert canvas coordinates to screen coordinates */
+    double screen_x, screen_y;
+    canvas_to_screen(canvas, view->x, view->y, &screen_x, &screen_y);
+
+    /* Account for XDG surface geometry offset (for CSD windows) */
+    struct wlr_box geo;
+    wlr_xdg_surface_get_geometry(xdg_surface, &geo);
+
+    /* Set up render data */
+    struct render_data data = {
+        .pass = pass,
+        .view = view,
+        .scale = canvas->scale,
+        .base_x = (int)round(screen_x) - (int)round(geo.x * canvas->scale),
+        .base_y = (int)round(screen_y) - (int)round(geo.y * canvas->scale),
+    };
+
+    /* Render all surfaces in the XDG surface tree (includes subsurfaces) */
+    wlr_xdg_surface_for_each_surface(xdg_surface, render_surface_iterator, &data);
 }
