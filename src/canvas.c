@@ -20,6 +20,9 @@
 #define ZOOM_MIN 0.1
 #define ZOOM_MAX 4.0
 
+/* Pan sensitivity multiplier for scroll-based panning */
+#define PAN_SENSITIVITY 2.5
+
 void canvas_init(struct infinidesk_canvas *canvas, struct infinidesk_server *server) {
     canvas->server = server;
 
@@ -102,9 +105,9 @@ void canvas_pan_end(struct infinidesk_canvas *canvas) {
 void canvas_pan_delta(struct infinidesk_canvas *canvas,
                       double delta_x, double delta_y)
 {
-    /* Move viewport by the delta (in canvas space) */
-    canvas->viewport_x -= delta_x / canvas->scale;
-    canvas->viewport_y -= delta_y / canvas->scale;
+    /* Move viewport by the delta (in canvas space), with sensitivity multiplier */
+    canvas->viewport_x -= (delta_x * PAN_SENSITIVITY) / canvas->scale;
+    canvas->viewport_y -= (delta_y * PAN_SENSITIVITY) / canvas->scale;
 
     /* Update all view positions */
     canvas_update_view_positions(canvas);

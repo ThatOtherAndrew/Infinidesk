@@ -84,6 +84,8 @@ struct infinidesk_server {
     struct infinidesk_view *grabbed_view;
     double grab_x, grab_y;  /* Cursor position at grab start */
     uint32_t resize_edges;  /* For resize operations */
+    bool scroll_panning;    /* Currently scroll-panning (started on empty canvas) */
+    struct wl_event_source *scroll_pan_timer;  /* Timer to end scroll-pan gesture */
 
     /* XDG shell */
     struct wlr_xdg_shell *xdg_shell;
