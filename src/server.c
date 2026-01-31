@@ -31,6 +31,7 @@
 #include "infinidesk/input.h"
 #include "infinidesk/cursor.h"
 #include "infinidesk/xdg_shell.h"
+#include "infinidesk/xwayland.h"
 #include "infinidesk/view.h"
 #include "infinidesk/background.h"
 
@@ -149,6 +150,12 @@ bool server_init(struct infinidesk_server *server) {
     /* Initialise XDG shell */
     xdg_shell_init(server);
 
+    /* Initialise XWayland */
+    if (!xwayland_init(server)) {
+        wlr_log(WLR_ERROR, "Failed to initialize XWayland");
+        /* Non-fatal - compositor can run without XWayland */
+    }
+
     /* Initialise background */
     background_init(server);
 
@@ -197,6 +204,9 @@ void server_run(struct infinidesk_server *server) {
 
 void server_finish(struct infinidesk_server *server) {
     wlr_log(WLR_DEBUG, "Cleaning up server resources");
+
+    /* Clean up XWayland */
+    xwayland_finish(server);
 
     /* Destroy views */
     struct infinidesk_view *view, *view_tmp;

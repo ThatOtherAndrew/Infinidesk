@@ -91,11 +91,19 @@ struct infinidesk_server {
     struct wl_listener new_xdg_toplevel;
     struct wl_listener new_xdg_popup;
 
+    /* XWayland */
+    struct wlr_xwayland *xwayland;
+    struct wl_listener xwayland_ready;
+    struct wl_listener xwayland_new_surface;
+
     /* Infinite canvas */
     struct infinidesk_canvas canvas;
 
     /* Modifier state for input handling */
     bool super_pressed;
+
+    /* Startup command (run after XWayland is ready) */
+    char *startup_cmd;
 };
 
 /*

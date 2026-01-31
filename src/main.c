@@ -95,14 +95,8 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Run startup command if specified */
-    if (startup_cmd) {
-        wlr_log(WLR_INFO, "Running startup command: %s", startup_cmd);
-        if (fork() == 0) {
-            execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (char *)NULL);
-            _exit(EXIT_FAILURE);
-        }
-    }
+    /* Store startup command - it will run when XWayland is ready */
+    server.startup_cmd = startup_cmd;
 
     /* Run the event loop */
     wlr_log(WLR_INFO, "Running compositor");

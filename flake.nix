@@ -32,6 +32,7 @@
               wayland-protocols
               libxkbcommon
               pixman
+              xorg.libxcb
             ];
 
             meta = with pkgs.lib; {

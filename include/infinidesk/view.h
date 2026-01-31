@@ -12,9 +12,15 @@
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/xwayland/xwayland.h>
 
 /* Forward declaration */
 struct infinidesk_server;
+
+enum infinidesk_view_type {
+    INFINIDESK_VIEW_XDG,
+    INFINIDESK_VIEW_XWAYLAND,
+};
 
 /*
  * A view represents a toplevel window on the canvas.
@@ -25,8 +31,12 @@ struct infinidesk_server;
 struct infinidesk_view {
     struct wl_list link;  /* infinidesk_server.views */
     struct infinidesk_server *server;
+    enum infinidesk_view_type type;
 
-    struct wlr_xdg_toplevel *xdg_toplevel;
+    union {
+        struct wlr_xdg_toplevel *xdg_toplevel;
+        struct wlr_xwayland_surface *xwayland_surface;
+    };
     struct wlr_scene_tree *scene_tree;
 
     /* Position in canvas coordinates */
@@ -53,6 +63,13 @@ struct infinidesk_view {
     struct wl_listener request_fullscreen;
     struct wl_listener set_title;
     struct wl_listener set_app_id;
+
+    /* XWayland-specific listeners */
+    struct wl_listener request_configure;
+    struct wl_listener request_activate;
+    struct wl_listener set_class;
+    struct wl_listener associate;
+    struct wl_listener dissociate;
 };
 
 /*
@@ -61,6 +78,18 @@ struct infinidesk_view {
  */
 struct infinidesk_view *view_create(struct infinidesk_server *server,
                                     struct wlr_xdg_toplevel *xdg_toplevel);
+
+/*
+ * Create a new view for an XWayland surface.
+ * The view is not yet mapped (visible) after creation.
+ */
+struct infinidesk_view *view_create_xwayland(struct infinidesk_server *server,
+                                              struct wlr_xwayland_surface *xwayland_surface);
+
+/*
+ * Get the wlr_surface for a view (works for both XDG and XWayland).
+ */
+struct wlr_surface *view_get_wlr_surface(struct infinidesk_view *view);
 
 /*
  * Destroy a view and clean up resources.

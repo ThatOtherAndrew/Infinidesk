@@ -20,6 +20,7 @@ wayland_server = dependency('wayland-server')
 wayland_protos = dependency('wayland-protocols')
 xkbcommon = dependency('xkbcommon')
 pixman = dependency('pixman-1')
+xcb = dependency('xcb')
 math = cc.find_library('m', required: false)
 
 # Wayland scanner for protocol generation
@@ -50,6 +51,7 @@ infinidesk_sources = files(
   'src/cursor.c',
   'src/output.c',
   'src/xdg_shell.c',
+  'src/xwayland.c',
   'src/background.c',
 )
 
@@ -69,6 +71,7 @@ executable('infinidesk',
     wayland_server,
     xkbcommon,
     pixman,
+    xcb,
     math,
   ],
   install: true,
