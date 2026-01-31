@@ -9,11 +9,28 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/xdg_shell.h"
 #include "infinidesk/server.h"
 #include "infinidesk/view.h"
+
+/* Handle new decoration request - tell client to use no decorations */
+static void handle_new_xdg_decoration(struct wl_listener *listener, void *data) {
+    (void)listener;
+    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
+
+    wlr_log(WLR_DEBUG, "New XDG decoration request, setting server-side mode");
+
+    /*
+     * Request server-side decorations. Since we don't actually render
+     * any decorations, this effectively tells the client to not draw
+     * its own decorations (CSD).
+     */
+    wlr_xdg_toplevel_decoration_v1_set_mode(decoration,
+        WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
 
 void xdg_shell_init(struct infinidesk_server *server) {
     /* Create the XDG shell */
@@ -32,6 +49,18 @@ void xdg_shell_init(struct infinidesk_server *server) {
     server->new_xdg_popup.notify = handle_new_xdg_popup;
     wl_signal_add(&server->xdg_shell->events.new_popup,
                   &server->new_xdg_popup);
+
+    /* Create the XDG decoration manager to disable client-side decorations */
+    server->xdg_decoration_manager =
+        wlr_xdg_decoration_manager_v1_create(server->wl_display);
+    if (server->xdg_decoration_manager) {
+        server->new_xdg_decoration.notify = handle_new_xdg_decoration;
+        wl_signal_add(&server->xdg_decoration_manager->events.new_toplevel_decoration,
+                      &server->new_xdg_decoration);
+        wlr_log(WLR_DEBUG, "XDG decoration manager initialised");
+    } else {
+        wlr_log(WLR_ERROR, "Failed to create XDG decoration manager");
+    }
 
     wlr_log(WLR_DEBUG, "XDG shell initialised");
 }

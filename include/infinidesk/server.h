@@ -22,6 +22,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 
 #include "infinidesk/canvas.h"
 
@@ -92,6 +93,10 @@ struct infinidesk_server {
     struct wl_list views;  /* infinidesk_view.link */
     struct wl_listener new_xdg_toplevel;
     struct wl_listener new_xdg_popup;
+
+    /* XDG decoration (to disable client-side decorations) */
+    struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
+    struct wl_listener new_xdg_decoration;
 
     /* Infinite canvas */
     struct infinidesk_canvas canvas;
