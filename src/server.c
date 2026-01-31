@@ -233,34 +233,79 @@ struct infinidesk_view *server_view_at(
     struct wlr_surface **surface,
     double *sx, double *sy)
 {
-    /* Use the scene graph to find the node at the given coordinates */
-    struct wlr_scene_node *node = wlr_scene_node_at(
-        &server->scene->tree.node, lx, ly, sx, sy);
+    /*
+     * Custom hit testing that accounts for canvas scale.
+     *
+     * The scene graph doesn't know about our custom scaled rendering,
+     * so we must do hit testing ourselves in canvas coordinates.
+     *
+     * 1. Convert screen coordinates to canvas coordinates
+     * 2. Find the topmost view containing that canvas point
+     * 3. Calculate surface-local coordinates accounting for scale
+     */
 
-    if (!node || node->type != WLR_SCENE_NODE_BUFFER) {
-        return NULL;
+    /* Convert screen position to canvas position */
+    double canvas_x, canvas_y;
+    screen_to_canvas(&server->canvas, lx, ly, &canvas_x, &canvas_y);
+
+    /* Views are ordered front-to-back in the list (front first) */
+    struct infinidesk_view *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (!view->xdg_toplevel->base->surface->mapped) {
+            continue;
+        }
+
+        /* Get the view geometry in canvas coordinates */
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+        /* View bounds in canvas space */
+        double view_left = view->x;
+        double view_top = view->y;
+        double view_right = view->x + geo.width;
+        double view_bottom = view->y + geo.height;
+
+        /* Check if canvas cursor is within view bounds */
+        if (canvas_x >= view_left && canvas_x < view_right &&
+            canvas_y >= view_top && canvas_y < view_bottom) {
+
+            /*
+             * Found a view - now find the surface at this position.
+             * The cursor position relative to the view in canvas space.
+             */
+            double local_x = canvas_x - view->x;
+            double local_y = canvas_y - view->y;
+
+            /*
+             * Use wlr_xdg_surface_surface_at to find the actual surface
+             * (handles subsurfaces, popups, etc.)
+             */
+            double sub_x, sub_y;
+            struct wlr_surface *found_surface = wlr_xdg_surface_surface_at(
+                view->xdg_toplevel->base, local_x, local_y, &sub_x, &sub_y);
+
+            if (found_surface) {
+                *surface = found_surface;
+                *sx = sub_x;
+                *sy = sub_y;
+                return view;
+            }
+
+            /*
+             * If no surface found at exact point (e.g., window decorations
+             * with transparent areas), return the view anyway with the
+             * main surface.
+             */
+            *surface = view->xdg_toplevel->base->surface;
+            *sx = local_x + geo.x;  /* Add geo offset for CSD */
+            *sy = local_y + geo.y;
+            return view;
+        }
     }
 
-    /* Get the scene buffer from the node */
-    struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-    struct wlr_scene_surface *scene_surface =
-        wlr_scene_surface_try_from_buffer(scene_buffer);
-
-    if (!scene_surface) {
-        return NULL;
-    }
-
-    *surface = scene_surface->surface;
-
-    /* Walk up the tree to find our view's scene_tree */
-    struct wlr_scene_tree *tree = node->parent;
-    while (tree && !tree->node.data) {
-        tree = tree->node.parent;
-    }
-
-    if (!tree || !tree->node.data) {
-        return NULL;
-    }
-
-    return tree->node.data;
+    /* No view found under cursor */
+    *surface = NULL;
+    *sx = 0;
+    *sy = 0;
+    return NULL;
 }

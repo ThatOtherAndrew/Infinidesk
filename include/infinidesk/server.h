@@ -22,6 +22,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 
 #include "infinidesk/canvas.h"
 
@@ -84,6 +85,8 @@ struct infinidesk_server {
     struct infinidesk_view *grabbed_view;
     double grab_x, grab_y;  /* Cursor position at grab start */
     uint32_t resize_edges;  /* For resize operations */
+    bool scroll_panning;    /* Currently scroll-panning (started on empty canvas) */
+    struct wl_event_source *scroll_pan_timer;  /* Timer to end scroll-pan gesture */
 
     /* XDG shell */
     struct wlr_xdg_shell *xdg_shell;
@@ -95,6 +98,9 @@ struct infinidesk_server {
     struct wlr_xwayland *xwayland;
     struct wl_listener xwayland_ready;
     struct wl_listener xwayland_new_surface;
+    /* XDG decoration (to disable client-side decorations) */
+    struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
+    struct wl_listener new_xdg_decoration;
 
     /* Infinite canvas */
     struct infinidesk_canvas canvas;
