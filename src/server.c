@@ -23,6 +23,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/server.h"
@@ -90,6 +91,10 @@ bool server_init(struct infinidesk_server *server) {
         wlr_log(WLR_ERROR, "Failed to create data device manager");
         goto error_allocator;
     }
+
+    /* Create fractional scale manager for HiDPI support */
+    wlr_fractional_scale_manager_v1_create(server->wl_display, 1);
+    wlr_log(WLR_DEBUG, "Fractional scale manager created");
 
     /* Create the output layout */
     wlr_log(WLR_DEBUG, "Creating output layout");

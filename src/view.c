@@ -410,26 +410,54 @@ static void render_surface_iterator(struct wlr_surface *surface,
         return;
     }
 
-    /* Calculate scaled dimensions */
-    int src_width = surface->current.width;
-    int src_height = surface->current.height;
-    int dst_width = (int)round(src_width * data->scale);
-    int dst_height = (int)round(src_height * data->scale);
+    /*
+     * Surface dimensions in logical coordinates.
+     * The texture may be larger if client uses buffer scale > 1.
+     */
+    int logical_width = surface->current.width;
+    int logical_height = surface->current.height;
+    int buffer_scale = surface->current.scale;
 
-    /* Calculate scaled position */
+    /* Calculate destination position */
     int dst_x = data->base_x + (int)round(sx * data->scale);
     int dst_y = data->base_y + (int)round(sy * data->scale);
 
-    /* Render the texture with scaling */
+    /* Calculate scaled destination size */
+    int dst_width = (int)round(logical_width * data->scale);
+    int dst_height = (int)round(logical_height * data->scale);
+
+    /*
+     * Set up source box to use the full texture.
+     * The texture dimensions are logical_size * buffer_scale.
+     */
+    struct wlr_fbox src_box = {
+        .x = 0,
+        .y = 0,
+        .width = logical_width * buffer_scale,
+        .height = logical_height * buffer_scale,
+    };
+
+    /*
+     * Choose filter mode:
+     * - At scale 1.0 with buffer_scale 1: no filtering needed (pixel-perfect)
+     * - Otherwise: use bilinear for smooth scaling
+     */
+    enum wlr_scale_filter_mode filter = WLR_SCALE_FILTER_BILINEAR;
+    if (data->scale == 1.0 && buffer_scale == 1) {
+        filter = WLR_SCALE_FILTER_NEAREST;
+    }
+
     wlr_render_pass_add_texture(data->pass, &(struct wlr_render_texture_options){
         .texture = texture,
+        .src_box = src_box,
         .dst_box = {
             .x = dst_x,
             .y = dst_y,
             .width = dst_width,
             .height = dst_height,
         },
-        .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+        .filter_mode = filter,
+        .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
     });
 }
 
