@@ -19,6 +19,7 @@
 #include "infinidesk/keyboard.h"
 #include "infinidesk/server.h"
 #include "infinidesk/view.h"
+#include "infinidesk/drawing.h"
 
 void keyboard_create(struct infinidesk_server *server,
                      struct wlr_keyboard *wlr_keyboard)
@@ -157,6 +158,9 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
      * - Alt + Enter:  Launch terminal (kitty)
      * - Alt + Q:      Close focused window
      * - Alt + Escape: Exit compositor
+     * - Alt + D:      Toggle drawing mode
+     * - Alt + C:      Clear all drawings
+     * - Alt + U:      Undo last stroke
      */
 
     /* Check for Alt modifier */
@@ -190,6 +194,24 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
         /* Alt + Escape: Exit compositor */
         wlr_log(WLR_INFO, "Exiting compositor");
         wl_display_terminate(server->wl_display);
+        return true;
+
+    case XKB_KEY_d:
+    case XKB_KEY_D:
+        /* Alt + D: Toggle drawing mode */
+        drawing_toggle_mode(&server->drawing);
+        return true;
+
+    case XKB_KEY_c:
+    case XKB_KEY_C:
+        /* Alt + C: Clear all drawings */
+        drawing_clear_all(&server->drawing);
+        return true;
+
+    case XKB_KEY_u:
+    case XKB_KEY_U:
+        /* Alt + U: Undo last stroke */
+        drawing_undo_last(&server->drawing);
         return true;
 
     default:

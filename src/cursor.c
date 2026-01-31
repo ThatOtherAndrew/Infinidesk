@@ -20,6 +20,7 @@
 #include "infinidesk/server.h"
 #include "infinidesk/view.h"
 #include "infinidesk/canvas.h"
+#include "infinidesk/drawing.h"
 
 /* Zoom factor for scroll wheel zoom */
 #define ZOOM_SCROLL_FACTOR 1.1
@@ -128,6 +129,23 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
         struct infinidesk_view *view = server_view_at(server,
             server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
+        /* Check if drawing mode is active */
+        if (server->drawing.drawing_mode) {
+            if (event->button == BTN_LEFT) {
+                /* Left click in drawing mode: Begin drawing stroke */
+                wlr_log(WLR_DEBUG, "Beginning drawing stroke");
+                server->cursor_mode = INFINIDESK_CURSOR_DRAW;
+
+                /* Convert cursor position to canvas coordinates */
+                double canvas_x, canvas_y;
+                screen_to_canvas(&server->canvas,
+                    server->cursor->x, server->cursor->y,
+                    &canvas_x, &canvas_y);
+                drawing_stroke_begin(&server->drawing, canvas_x, canvas_y);
+                return;
+            }
+        }
+
         /* Check for Super key modifier actions */
         if (server->super_pressed) {
             if (event->button == BTN_LEFT && view) {
@@ -175,6 +193,11 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
         } else if (server->cursor_mode == INFINIDESK_CURSOR_PAN) {
             /* End canvas pan */
             canvas_pan_end(&server->canvas);
+            cursor_reset_mode(server);
+
+        } else if (server->cursor_mode == INFINIDESK_CURSOR_DRAW) {
+            /* End drawing stroke */
+            drawing_stroke_end(&server->drawing);
             cursor_reset_mode(server);
         }
     }
@@ -296,6 +319,16 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
         /* Update the viewport during pan */
         canvas_pan_update(&server->canvas,
             server->cursor->x, server->cursor->y);
+        return;
+    }
+
+    case INFINIDESK_CURSOR_DRAW: {
+        /* Add points to the current stroke */
+        double canvas_x, canvas_y;
+        screen_to_canvas(&server->canvas,
+            server->cursor->x, server->cursor->y,
+            &canvas_x, &canvas_y);
+        drawing_stroke_add_point(&server->drawing, canvas_x, canvas_y);
         return;
     }
 

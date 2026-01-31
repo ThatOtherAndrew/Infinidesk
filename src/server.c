@@ -28,6 +28,7 @@
 
 #include "infinidesk/server.h"
 #include "infinidesk/canvas.h"
+#include "infinidesk/drawing.h"
 #include "infinidesk/output.h"
 #include "infinidesk/input.h"
 #include "infinidesk/cursor.h"
@@ -142,6 +143,9 @@ bool server_init(struct infinidesk_server *server) {
     /* Initialise the canvas */
     canvas_init(&server->canvas, server);
 
+    /* Initialise drawing layer */
+    drawing_init(&server->drawing, server);
+
     /* Initialise output handling */
     output_init(server);
 
@@ -208,6 +212,9 @@ void server_finish(struct infinidesk_server *server) {
     wl_list_for_each_safe(view, view_tmp, &server->views, link) {
         view_destroy(view);
     }
+
+    /* Clean up drawing layer */
+    drawing_finish(&server->drawing);
 
     /* Note: Most resources are automatically cleaned up when the display
      * is destroyed, as they're attached to it. We explicitly clean up

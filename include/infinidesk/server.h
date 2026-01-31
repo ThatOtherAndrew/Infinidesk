@@ -24,6 +24,7 @@
 #include <wlr/types/wlr_seat.h>
 
 #include "infinidesk/canvas.h"
+#include "infinidesk/drawing.h"
 
 /* Forward declarations */
 struct infinidesk_view;
@@ -36,6 +37,7 @@ enum infinidesk_cursor_mode {
     INFINIDESK_CURSOR_MOVE,         /* Moving a window (Super + drag) */
     INFINIDESK_CURSOR_PAN,          /* Panning the canvas */
     INFINIDESK_CURSOR_RESIZE,       /* Resizing a window (future) */
+    INFINIDESK_CURSOR_DRAW,         /* Drawing on the canvas */
 };
 
 /* Main server state */
@@ -95,6 +97,9 @@ struct infinidesk_server {
 
     /* Infinite canvas */
     struct infinidesk_canvas canvas;
+
+    /* Drawing layer */
+    struct drawing_layer drawing;
 
     /* Modifier state for input handling */
     bool super_pressed;

@@ -19,6 +19,7 @@
 #include <wlr/util/log.h>
 
 #include "infinidesk/canvas.h"
+#include "infinidesk/drawing.h"
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
 #include "infinidesk/view.h"
@@ -160,6 +161,9 @@ static void output_render_custom(struct infinidesk_output *output) {
     }
     view_render(view, pass);
   }
+
+  /* Render drawing layer on top of everything */
+  drawing_render(&server->drawing, pass, width, height);
 
   /* Submit the render pass */
   wlr_render_pass_submit(pass);
