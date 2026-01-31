@@ -15,6 +15,7 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/render/pass.h>
+#include <wlr/backend/wayland.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/output.h"
@@ -94,6 +95,13 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 
     /* Add to server's output list */
     wl_list_insert(&server->outputs, &output->link);
+
+    /* Set window title and app_id when running nested in a Wayland compositor */
+    if (wlr_output_is_wl(wlr_output)) {
+        wlr_wl_output_set_title(wlr_output, "Infinidesk");
+        wlr_wl_output_set_app_id(wlr_output, "infinidesk");
+        wlr_log(WLR_DEBUG, "Set nested Wayland window title/app_id");
+    }
 
     wlr_log(WLR_DEBUG, "Output %s configured", wlr_output->name);
 }
