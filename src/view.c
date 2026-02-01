@@ -319,6 +319,9 @@ void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, i
     canvas->viewport_y = view_center_y - (output_height / (canvas->scale * 2.0));
 
     canvas_update_view_positions(canvas);
+
+    view_focus(view);
+    view_raise(view);
 }
 
 /* Event handlers */
