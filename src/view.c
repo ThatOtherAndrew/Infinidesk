@@ -12,6 +12,11 @@
 #include <stdlib.h>
 #include <time.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/render/pass.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
@@ -312,15 +317,7 @@ void view_close(struct infinidesk_view *view) {
   wlr_xdg_toplevel_send_close(view->xdg_toplevel);
 }
 
-void view_alt_tab(struct wl_list *views) {
-  if (wl_list_empty(views)) {
-    // Do Nothing
-    return;
-  }
-}
-
-void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view,
-               int output_width, int output_height) {
+void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int output_width, int output_height) {
   /* Get view dimensions */
   struct wlr_box geo;
   wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
@@ -343,6 +340,129 @@ void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view,
 
   view_focus(view);
   view_raise(view);
+}
+
+void views_gather(struct infinidesk_server *server, double minimum_gap) {
+    if (wl_list_empty(&server->views)) {
+        return;
+    }
+
+    /* Get viewport center */
+    struct infinidesk_output *output = output_get_primary(server);
+    if (!output) {
+        return;
+    }
+
+    int screen_width, screen_height;
+    output_get_effective_resolution(output, &screen_width, &screen_height);
+
+    double viewport_center_x, viewport_center_y;
+    canvas_get_viewport_centre(&server->canvas, screen_width, screen_height,
+                               &viewport_center_x, &viewport_center_y);
+
+    /* First, calculate initial centroid */
+    int count = 0;
+    double centroid_x = 0.0, centroid_y = 0.0;
+    struct infinidesk_view *view;
+
+    /* Go through the list of views, and add the centre points of each view */
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+        centroid_x += view->x + geo.width / 2.0;
+        centroid_y += view->y + geo.height / 2.0;
+        count++;
+    }
+
+    /* Return if there are no views */
+    if (count == 0) {
+        return;
+    }
+
+    /* Divide the summed centres by the number of views to get the total centre */
+    centroid_x /= count;
+    centroid_y /= count;
+
+    /* Scale factor to bring views closer to the centroid (0.5 = halfway) */
+    double scale_factor = 0.5;
+
+    /* Move each view closer to the centroid by scaling its vector from the centroid */
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+        /* Calculate current view centre */
+        double view_center_x = view->x + geo.width / 2.0;
+        double view_center_y = view->y + geo.height / 2.0;
+
+        /* Calculate vector from centroid to view centre */
+        double vec_x = view_center_x - centroid_x;
+        double vec_y = view_center_y - centroid_y;
+
+        /* Calculate current distance from centroid */
+        double current_distance = sqrt(vec_x * vec_x + vec_y * vec_y);
+
+        /*
+         * Calculate minimum allowed distance based on view's bounding box.
+         * Use half the diagonal of the bounding box plus the minimum gap.
+         * This ensures the view's edge doesn't get closer than minimum_gap to the centroid.
+         */
+        double half_width = geo.width / 2.0;
+        double half_height = geo.height / 2.0;
+
+        /*
+         * For a more accurate minimum distance, calculate how far the edge of the
+         * bounding box is from the centre along the direction of the vector.
+         * This accounts for the view's aspect ratio and approach angle.
+         */
+        double min_distance;
+        if (current_distance < 0.001) {
+            /* View is already at centroid, no need to move */
+            min_distance = 0.0;
+        } else {
+            /* Normalise the vector to get direction */
+            double dir_x = vec_x / current_distance;
+            double dir_y = vec_y / current_distance;
+
+            /*
+             * Calculate intersection of the direction ray with the bounding box.
+             * The distance from centre to edge along direction (dir_x, dir_y) is:
+             * min(half_width / |dir_x|, half_height / |dir_y|) but we need to
+             * handle the case where dir_x or dir_y is zero.
+             */
+            double t_x = (fabs(dir_x) > 0.001) ? half_width / fabs(dir_x) : INFINITY;
+            double t_y = (fabs(dir_y) > 0.001) ? half_height / fabs(dir_y) : INFINITY;
+            double edge_distance = fmin(t_x, t_y);
+
+            /* Minimum distance is edge distance plus the gap */
+            min_distance = edge_distance + minimum_gap;
+        }
+
+        /* Calculate the new distance after scaling */
+        double new_distance = current_distance * scale_factor;
+
+        /* Clamp the new distance to not go below minimum */
+        if (new_distance < min_distance) {
+            new_distance = min_distance;
+        }
+
+        /* Calculate scale factor for this view (may differ from global scale_factor) */
+        double effective_scale = (current_distance > 0.001) ? new_distance / current_distance : 1.0;
+
+        /* Scale the vector to get new position */
+        double new_center_x = centroid_x + vec_x * effective_scale;
+        double new_center_y = centroid_y + vec_y * effective_scale;
+
+        /* Set new view position (converting back from centre to top-left) */
+        view->x = new_center_x - geo.width / 2.0;
+        view->y = new_center_y - geo.height / 2.0;
+
+        /* Update scene position */
+        view_update_scene_position(view);
+    }
+
+    wlr_log(WLR_DEBUG, "Gathered %d views towards centroid (%.1f, %.1f) with min gap %.1f",
+            count, centroid_x, centroid_y, minimum_gap);
 }
 
 /* Event handlers */
@@ -634,12 +754,6 @@ static double ease_out_cubic(double t) {
   double inv = 1.0 - t;
   return 1.0 - (inv * inv * inv);
 }
-
-/*
- * Cubic ease-in function: f(t) = t^3
- * Starts slow, accelerates towards the end.
- */
-static double ease_in_cubic(double t) { return t * t * t; }
 
 /*
  * Linear interpolation between two values.

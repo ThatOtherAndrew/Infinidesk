@@ -169,19 +169,22 @@ static void handle_alt_tab(struct infinidesk_server *server) {
 }
 
 bool keyboard_handle_keybinding(struct infinidesk_server *server,
-                                uint32_t modifiers, xkb_keysym_t sym) {
-  /*
-   * Compositor keybindings (using Alt for nested compositor compatibility):
-   * - Alt + Enter:  Launch terminal (kitty)
-   * - Alt + Q:      Close focused window
-   * - Alt + Escape: Exit compositor
-   * - Alt + D:      Toggle drawing mode
-   * - Alt + C:      Clear all drawings
-   * - Alt + U:      Undo last stroke
-   * - Alt + R:      Redo last stroke
-   * - Alt + F:      Focus on first view (testing)
-   * - Alt + Tab:    Cycle windows (release Alt to confirm)
-   */
+                                uint32_t modifiers,
+                                xkb_keysym_t sym)
+{
+    /*
+     * Compositor keybindings (using Alt for nested compositor compatibility):
+     * - Alt + Enter:  Launch terminal (kitty)
+     * - Alt + Q:      Close focused window
+     * - Alt + Escape: Exit compositor
+     * - Alt + D:      Toggle drawing mode
+     * - Alt + C:      Clear all drawings
+     * - Alt + U:      Undo last stroke
+     * - Alt + G:      Gather windows to center
+     * - Alt + R:      Redo last stroke
+     * - Alt + F:      Focus on first view (testing)
+     * - Alt + Tab:    Cycle windows (release Alt to confirm)
+     */
 
   /* Check for Alt modifier */
   if (!(modifiers & WLR_MODIFIER_ALT)) {
@@ -199,16 +202,22 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
     }
     return true;
 
-  case XKB_KEY_q:
-  case XKB_KEY_Q:
+   case XKB_KEY_q:
+   case XKB_KEY_Q:
     /* Alt + Q: Close focused window */
     if (!wl_list_empty(&server->views)) {
-      struct infinidesk_view *view =
-          wl_container_of(server->views.next, view, link);
-      wlr_log(WLR_DEBUG, "Closing focused view %p", (void *)view);
-      view_close(view);
+        struct infinidesk_view *view =
+            wl_container_of(server->views.next, view, link);
+        wlr_log(WLR_DEBUG, "Closing focused view %p", (void *)view);
+        view_close(view);
     }
     return true;
+
+  case XKB_KEY_g:
+  case XKB_KEY_G:
+        /* Alt + G: Gather all windows to center */
+        views_gather(server, 20.0);  /* 20px minimum gap */
+        return true;
 
   case XKB_KEY_Escape:
     /* Alt + Escape: Exit compositor */
@@ -237,6 +246,8 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
   case XKB_KEY_Tab:
     /* Alt + Tab: Cycle through windows (release Alt to confirm) */
     handle_alt_tab(server);
+    return true;
+
   case XKB_KEY_r:
   case XKB_KEY_R:
     /* Alt + R: Redo last stroke */
