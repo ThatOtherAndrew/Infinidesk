@@ -16,6 +16,7 @@
 
 #include <wlr/util/log.h>
 
+#include "infinidesk/config.h"
 #include "infinidesk/server.h"
 
 static struct infinidesk_server server = {0};
@@ -95,9 +96,18 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Run startup command if specified */
+    /* Load configuration file */
+    struct infinidesk_config config;
+    if (!config_load(&config)) {
+        wlr_log(WLR_ERROR, "Failed to load config, continuing without it");
+    }
+
+    /* Run startup commands from config file */
+    config_run_startup_commands(&config);
+
+    /* Run command-line startup command if specified (in addition to config) */
     if (startup_cmd) {
-        wlr_log(WLR_INFO, "Running startup command: %s", startup_cmd);
+        wlr_log(WLR_INFO, "Running command-line startup command: %s", startup_cmd);
         if (fork() == 0) {
             execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (char *)NULL);
             _exit(EXIT_FAILURE);
@@ -110,6 +120,7 @@ int main(int argc, char *argv[]) {
 
     /* Clean up */
     wlr_log(WLR_INFO, "Shutting down");
+    config_free(&config);
     server_finish(&server);
 
     return EXIT_SUCCESS;

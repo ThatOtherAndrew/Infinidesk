@@ -43,6 +43,7 @@ infinidesk_inc = include_directories('include')
 infinidesk_sources = files(
   'src/main.c',
   'src/server.c',
+  'src/config.c',
   'src/canvas.c',
   'src/drawing.c',
   'src/view.c',
