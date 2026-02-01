@@ -26,6 +26,7 @@
 
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
+#include "infinidesk/switcher.h"
 
 /* Forward declarations */
 struct infinidesk_view;
@@ -109,9 +110,11 @@ struct infinidesk_server {
     /* Modifier state for input handling */
     bool super_pressed;
 
-    /* Alt+Tab switcher state */
-    bool switcher_active;
-    struct infinidesk_view *switcher_selected;
+    /* Alt+Tab switcher */
+    struct infinidesk_switcher switcher;
+
+    /* View ID counter for unique identification */
+    uint32_t next_view_id;
 };
 
 /*

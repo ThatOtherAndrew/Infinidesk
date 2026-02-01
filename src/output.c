@@ -22,6 +22,7 @@
 #include "infinidesk/drawing.h"
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
+#include "infinidesk/switcher.h"
 #include "infinidesk/view.h"
 
 /* Background colour */
@@ -175,6 +176,9 @@ static void output_render_custom(struct infinidesk_output *output) {
 
   /* Render drawing layer on top of everything */
   drawing_render(&server->drawing, pass, width, height);
+
+  /* Render alt-tab switcher overlay */
+  switcher_render(&server->switcher, pass, width, height);
 
   /* Submit the render pass */
   wlr_render_pass_submit(pass);

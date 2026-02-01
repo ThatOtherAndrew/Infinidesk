@@ -21,6 +21,7 @@
 #include "infinidesk/view.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/output.h"
+#include "infinidesk/switcher.h"
 
 void keyboard_create(struct infinidesk_server *server,
                      struct wlr_keyboard *wlr_keyboard)
@@ -100,21 +101,8 @@ void keyboard_handle_key(struct wl_listener *listener, void *data) {
 
             /* Alt release: commit switcher selection */
             if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED &&
-                server->switcher_active) {
-                server->switcher_active = false;
-                if (server->switcher_selected) {
-                    /* Get screen dimensions for view_snap */
-                    struct infinidesk_output *output =
-                        wl_container_of(server->outputs.next, output, link);
-                    int screen_width = output->wlr_output->width;
-                    int screen_height = output->wlr_output->height;
-
-                    view_snap(&server->canvas, server->switcher_selected,
-                              screen_width, screen_height);
-                    wlr_log(WLR_DEBUG, "Switcher: committed view %p",
-                            (void *)server->switcher_selected);
-                }
-                server->switcher_selected = NULL;
+                server->switcher.active) {
+                switcher_confirm(&server->switcher);
             }
             break;
         }
@@ -170,41 +158,15 @@ void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 }
 
 /*
- * Handle Alt+Tab window cycling.
- * Cycles through views in the list. Selection is committed on Alt release.
+ * Handle Alt+Tab window switching.
+ * Uses the Cairo-based switcher overlay.
  */
 static void handle_alt_tab(struct infinidesk_server *server) {
-    if (wl_list_empty(&server->views)) {
-        return;
-    }
-
-    if (!server->switcher_active) {
-        /* Start switcher - select second view (first is already focused) */
-        server->switcher_active = true;
-        struct infinidesk_view *first =
-            wl_container_of(server->views.next, first, link);
-        if (first->link.next == &server->views) {
-            /* Only one view, select it */
-            server->switcher_selected = first;
-        } else {
-            /* Select second view */
-            server->switcher_selected =
-                wl_container_of(first->link.next, server->switcher_selected, link);
-        }
+    if (!server->switcher.active) {
+        switcher_start(&server->switcher);
     } else {
-        /* Cycle to next view */
-        if (server->switcher_selected->link.next == &server->views) {
-            /* Wrap to first */
-            server->switcher_selected =
-                wl_container_of(server->views.next, server->switcher_selected, link);
-        } else {
-            /* Next in list */
-            server->switcher_selected =
-                wl_container_of(server->switcher_selected->link.next,
-                                server->switcher_selected, link);
-        }
+        switcher_next(&server->switcher);
     }
-    wlr_log(WLR_DEBUG, "Switcher: selected view %p", (void *)server->switcher_selected);
 }
 
 bool keyboard_handle_keybinding(struct infinidesk_server *server,

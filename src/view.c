@@ -68,6 +68,7 @@ struct infinidesk_view *view_create(struct infinidesk_server *server,
 
     view->server = server;
     view->xdg_toplevel = xdg_toplevel;
+    view->id = server->next_view_id++;
 
     /* Create the scene tree for this view */
     view->scene_tree = wlr_scene_xdg_surface_create(

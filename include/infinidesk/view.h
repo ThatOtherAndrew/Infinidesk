@@ -36,6 +36,9 @@ struct infinidesk_view {
     struct wlr_xdg_toplevel *xdg_toplevel;
     struct wlr_scene_tree *scene_tree;
 
+    /* Unique view identifier for alt-tab matching */
+    uint32_t id;
+
     /* Position in canvas coordinates */
     double x;
     double y;
