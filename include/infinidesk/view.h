@@ -41,6 +41,10 @@ struct infinidesk_view {
     double grab_view_x;  /* View position when grab started */
     double grab_view_y;
 
+    /* Focus animation state */
+    bool focused;              /* Current focus state */
+    double focus_animation;    /* 0.0 = unfocused, 1.0 = focused */
+
     /* Surface event listeners */
     struct wl_listener map;
     struct wl_listener unmap;
@@ -119,5 +123,12 @@ void view_close(struct infinidesk_view *view);
  * Render the view to a render pass with the current canvas transform.
  */
 void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass);
+
+/*
+ * Update focus animation state for a view.
+ * Call this each frame to animate the border colour transition.
+ * delta_time is the time since last frame in seconds.
+ */
+void view_update_animation(struct infinidesk_view *view, double delta_time);
 
 #endif /* INFINIDESK_VIEW_H */
