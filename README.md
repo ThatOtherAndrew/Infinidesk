@@ -29,4 +29,19 @@ The [PangoCairo](https://docs.gtk.org/PangoCairo/pango_cairo.html) text renderin
 
 Claude 4.5 Opus was used via OpenCode and Claude Code for scaffolding and debugging the project.
 
-To ensure deterministic and reliable builds, a [Nix](https://nixos.org/) flake is used to build and run Infinidesk.
+## Building and running
+
+To ensure deterministic and reliable builds, a [Nix](https://nixos.org/) flake is used to build and run Infinidesk. Nix is also the **easiest way** to build and run this project.
+
+To build Infinidesk:
+
+```shell
+nix build
+# Executable in ./result/bin/infinidesk
+```
+
+To directly run:
+
+```shell
+nix run
+```
