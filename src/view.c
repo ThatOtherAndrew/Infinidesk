@@ -306,19 +306,25 @@ void view_close(struct infinidesk_view *view) {
 }
 
 void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int output_width, int output_height) {
-    /* Get view dimensions */                                                                                                                                   
-    struct wlr_box geo;                                                                                                                                         
+    /* Get view dimensions */
+    struct wlr_box geo;
     wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
 
-    /* Center the viewport on the view's center */                                                                                                              
-    double view_center_x = view->x + geo.width / 2.0;                                                                                                           
+    /* Calculate view center in canvas coordinates */
+    double view_center_x = view->x + geo.width / 2.0;
     double view_center_y = view->y + geo.height / 2.0;
 
-    /* Set viewport so view center is at screen center */
-    canvas->viewport_x = view_center_x - (output_width  / (canvas->scale * 2.0));
-    canvas->viewport_y = view_center_y - (output_height / (canvas->scale * 2.0));
+    /* Store current position as animation start */
+    canvas->snap_start_x = canvas->viewport_x;
+    canvas->snap_start_y = canvas->viewport_y;
 
-    canvas_update_view_positions(canvas);
+    /* Calculate target viewport position (view center at screen center) */
+    canvas->snap_target_x = view_center_x - (output_width / 2.0) / canvas->scale;
+    canvas->snap_target_y = view_center_y - (output_height / 2.0) / canvas->scale;
+
+    /* Start animation */
+    canvas->snap_anim_start_ms = get_time_ms();
+    canvas->snap_anim_active = true;
 
     view_focus(view);
     view_raise(view);

@@ -131,6 +131,9 @@ static void output_render_custom(struct infinidesk_output *output) {
   /* Update focus animations */
   view_update_focus_animations(server, time_ms);
 
+  /* Update viewport snap animation */
+  canvas_update_snap_animation(&server->canvas, time_ms);
+
   /* Initialise output state */
   struct wlr_output_state state;
   wlr_output_state_init(&state);
