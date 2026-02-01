@@ -116,32 +116,6 @@ void output_handle_frame(struct wl_listener *listener, void *data) {
 }
 
 /*
- * Calculate time delta between frames in seconds.
- */
-static double calculate_delta_time(struct infinidesk_output *output,
-                                   struct timespec *now) {
-  if (!output->has_last_frame) {
-    output->last_frame_time = *now;
-    output->has_last_frame = true;
-    return 0.016; /* Assume ~60fps for first frame */
-  }
-
-  double delta =
-      (now->tv_sec - output->last_frame_time.tv_sec) +
-      (now->tv_nsec - output->last_frame_time.tv_nsec) / 1000000000.0;
-
-  output->last_frame_time = *now;
-
-  /* Clamp delta to reasonable range (prevent huge jumps) */
-  if (delta > 0.1)
-    delta = 0.1;
-  if (delta < 0.0)
-    delta = 0.0;
-
-  return delta;
-}
-
-/*
  * Custom rendering with canvas transforms.
  * This bypasses the scene graph to allow arbitrary scaling of surfaces.
  */
@@ -149,16 +123,13 @@ static void output_render_custom(struct infinidesk_output *output) {
   struct infinidesk_server *server = output->server;
   struct wlr_output *wlr_output = output->wlr_output;
 
-  /* Calculate frame delta time for animations */
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  double delta_time = calculate_delta_time(output, &now);
+  /* Get current time for animations */
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  uint32_t time_ms = (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 
-  /* Update view animations */
-  struct infinidesk_view *view;
-  wl_list_for_each(view, &server->views, link) {
-    view_update_animation(view, delta_time);
-  }
+  /* Update focus animations */
+  view_update_focus_animations(server, time_ms);
 
   /* Initialise output state */
   struct wlr_output_state state;
@@ -191,6 +162,7 @@ static void output_render_custom(struct infinidesk_output *output) {
 
   /* Render views back-to-front (reverse iteration since list is front-to-back)
    */
+  struct infinidesk_view *view;
   wl_list_for_each_reverse(view, &server->views, link) {
     if (!view->xdg_toplevel->base->surface->mapped) {
       continue;
@@ -211,6 +183,9 @@ static void output_render_custom(struct infinidesk_output *output) {
   wlr_output_state_finish(&state);
 
   /* Send frame done to all mapped surfaces (including subsurfaces) */
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+
   wl_list_for_each(view, &server->views, link) {
     if (view->xdg_toplevel->base->surface->mapped) {
       wlr_xdg_surface_for_each_surface(view->xdg_toplevel->base,

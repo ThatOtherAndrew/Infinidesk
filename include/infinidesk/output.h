@@ -26,10 +26,6 @@ struct infinidesk_output {
     struct wlr_output *wlr_output;
     struct wlr_scene_output *scene_output;
 
-    /* Frame timing for animations */
-    struct timespec last_frame_time;
-    bool has_last_frame;
-
     struct wl_listener frame;
     struct wl_listener request_state;
     struct wl_listener destroy;

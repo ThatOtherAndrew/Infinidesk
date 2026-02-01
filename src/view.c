@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_scene.h>
@@ -24,15 +25,25 @@
 #include "infinidesk/output.h"
 
 /* Window decoration constants */
-#define BORDER_WIDTH 2
-#define CORNER_RADIUS 8
+#define BORDER_WIDTH 3
+#define CORNER_RADIUS 10
 
 /* Border colours (RGBA) */
-static const float BORDER_COLOUR_UNFOCUSED[4] = {0.3f, 0.3f, 0.35f, 1.0f};
-static const float BORDER_COLOUR_FOCUSED[4] = {0.4f, 0.6f, 0.9f, 1.0f};
+#define BORDER_FOCUSED_R 0.4f
+#define BORDER_FOCUSED_G 0.6f
+#define BORDER_FOCUSED_B 0.9f
+#define BORDER_FOCUSED_A 1.0f
 
-/* Animation speed (progress per second) */
-#define FOCUS_ANIMATION_SPEED 10.0
+#define BORDER_UNFOCUSED_R 0.3f
+#define BORDER_UNFOCUSED_G 0.3f
+#define BORDER_UNFOCUSED_B 0.35f
+#define BORDER_UNFOCUSED_A 1.0f
+
+/* Background colour for corner masking */
+#define BG_COLOUR_R 0.18f
+#define BG_COLOUR_G 0.18f
+#define BG_COLOUR_B 0.18f
+#define BG_COLOUR_A 1.0f
 
 /* Forward declarations for event handlers */
 static void handle_map(struct wl_listener *listener, void *data);
@@ -105,6 +116,12 @@ struct infinidesk_view *view_create(struct infinidesk_server *server,
     view->set_app_id.notify = handle_set_app_id;
     wl_signal_add(&xdg_toplevel->events.set_app_id, &view->set_app_id);
 
+    /* Initialise focus animation state */
+    view->focused = false;
+    view->focus_animation = 0.0;
+    view->focus_anim_start_ms = 0;
+    view->focus_anim_active = false;
+
     /* Add to the server's view list */
     wl_list_insert(&server->views, &view->link);
 
@@ -131,6 +148,13 @@ void view_destroy(struct infinidesk_view *view) {
     free(view);
 }
 
+/* Helper to get current time in milliseconds */
+static uint32_t get_time_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
+
 void view_focus(struct infinidesk_view *view) {
     if (!view) {
         return;
@@ -146,17 +170,16 @@ void view_focus(struct infinidesk_view *view) {
         return;
     }
 
-    /* Deactivate the previously focused surface and update its focus state */
+    /* Deactivate the previously focused surface and start unfocus animation */
     if (prev_surface) {
         struct wlr_xdg_toplevel *prev_toplevel =
             wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
-        if (prev_toplevel) {
-            wlr_xdg_toplevel_set_activated(prev_toplevel, false);
-            /* Update focus state for animation */
+        if (prev_toplevel && prev_toplevel->base->data) {
             struct infinidesk_view *prev_view = prev_toplevel->base->data;
-            if (prev_view) {
-                prev_view->focused = false;
-            }
+            prev_view->focused = false;
+            prev_view->focus_anim_start_ms = get_time_ms();
+            prev_view->focus_anim_active = true;
+            wlr_xdg_toplevel_set_activated(prev_toplevel, false);
         }
     }
 
@@ -167,9 +190,11 @@ void view_focus(struct infinidesk_view *view) {
     /* Raise the scene node to the top */
     wlr_scene_node_raise_to_top(&view->scene_tree->node);
 
-    /* Activate the toplevel and set focus state */
+    /* Activate the toplevel and start focus animation */
     wlr_xdg_toplevel_set_activated(view->xdg_toplevel, true);
     view->focused = true;
+    view->focus_anim_start_ms = get_time_ms();
+    view->focus_anim_active = true;
 
     /* Send keyboard focus */
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
@@ -494,123 +519,265 @@ static void render_surface_iterator(struct wlr_surface *surface,
 }
 
 /*
- * Linear interpolation helper.
+ * Cubic ease-out function: f(t) = 1 - (1 - t)^3
+ * Starts fast, decelerates towards the end.
+ */
+static double ease_out_cubic(double t) {
+    double inv = 1.0 - t;
+    return 1.0 - (inv * inv * inv);
+}
+
+/*
+ * Linear interpolation between two values.
  */
 static float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
 /*
- * Ease-out cubic for smooth animation.
+ * Render the window border with rounded corners.
  */
-static double ease_out_cubic(double t) {
-    return 1.0 - pow(1.0 - t, 3.0);
+static void render_border(struct wlr_render_pass *pass,
+                          int x, int y, int width, int height,
+                          int border_width, int corner_radius,
+                          float r, float g, float b, float a)
+{
+    /* Skip rendering if dimensions are too small */
+    if (width <= 0 || height <= 0 || border_width <= 0) {
+        return;
+    }
+
+    struct wlr_render_color colour = { .r = r, .g = g, .b = b, .a = a };
+
+    /* Ensure corner radius doesn't exceed half the smallest dimension */
+    int max_radius = (width < height ? width : height) / 2;
+    if (corner_radius > max_radius) {
+        corner_radius = max_radius;
+    }
+    if (corner_radius < 0) {
+        corner_radius = 0;
+    }
+
+    /* If no corner radius, just draw simple rectangles */
+    if (corner_radius == 0) {
+        /* Top */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x, .y = y, .width = width, .height = border_width },
+            .color = colour,
+        });
+        /* Bottom */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x, .y = y + height - border_width, .width = width, .height = border_width },
+            .color = colour,
+        });
+        /* Left */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x, .y = y + border_width, .width = border_width, .height = height - 2 * border_width },
+            .color = colour,
+        });
+        /* Right */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x + width - border_width, .y = y + border_width, .width = border_width, .height = height - 2 * border_width },
+            .color = colour,
+        });
+        return;
+    }
+
+    /* Top edge (between corners) */
+    if (width > 2 * corner_radius) {
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x + corner_radius,
+                .y = y,
+                .width = width - 2 * corner_radius,
+                .height = border_width,
+            },
+            .color = colour,
+        });
+    }
+
+    /* Bottom edge (between corners) */
+    if (width > 2 * corner_radius) {
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x + corner_radius,
+                .y = y + height - border_width,
+                .width = width - 2 * corner_radius,
+                .height = border_width,
+            },
+            .color = colour,
+        });
+    }
+
+    /* Left edge (between corners) */
+    if (height > 2 * corner_radius) {
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x,
+                .y = y + corner_radius,
+                .width = border_width,
+                .height = height - 2 * corner_radius,
+            },
+            .color = colour,
+        });
+    }
+
+    /* Right edge (between corners) */
+    if (height > 2 * corner_radius) {
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x + width - border_width,
+                .y = y + corner_radius,
+                .width = border_width,
+                .height = height - 2 * corner_radius,
+            },
+            .color = colour,
+        });
+    }
+
+    /*
+     * Render rounded corners using small rectangles to approximate arcs.
+     * For each row in the corner region, we draw a horizontal line segment
+     * that forms part of the rounded border.
+     */
+    double outer_r = (double)corner_radius;
+    double inner_r = (double)(corner_radius - border_width);
+    if (inner_r < 0) inner_r = 0;
+
+    for (int row = 0; row < corner_radius; row++) {
+        /* Distance from centre of the corner arc to this row */
+        double dy = corner_radius - row - 0.5;
+
+        /* Calculate x extent of outer and inner circles at this y */
+        double outer_x_extent = 0;
+        if (dy <= outer_r) {
+            outer_x_extent = sqrt(outer_r * outer_r - dy * dy);
+        }
+
+        double inner_x_extent = 0;
+        if (dy <= inner_r) {
+            inner_x_extent = sqrt(inner_r * inner_r - dy * dy);
+        }
+
+        /* The border segment starts where inner circle ends and goes to outer circle */
+        int seg_start = (int)floor(corner_radius - outer_x_extent);
+        int seg_end = (int)ceil(corner_radius - inner_x_extent);
+
+        /* Clamp to valid range */
+        if (seg_start < 0) seg_start = 0;
+        if (seg_end > corner_radius) seg_end = corner_radius;
+        if (seg_end < seg_start) seg_end = seg_start;
+
+        int seg_width = seg_end - seg_start;
+        if (seg_width <= 0) continue;
+
+        /* Top-left corner */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x + seg_start,
+                .y = y + row,
+                .width = seg_width,
+                .height = 1,
+            },
+            .color = colour,
+        });
+
+        /* Top-right corner */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x + width - corner_radius + (corner_radius - seg_end),
+                .y = y + row,
+                .width = seg_width,
+                .height = 1,
+            },
+            .color = colour,
+        });
+
+        /* Bottom-left corner */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x + seg_start,
+                .y = y + height - 1 - row,
+                .width = seg_width,
+                .height = 1,
+            },
+            .color = colour,
+        });
+
+        /* Bottom-right corner */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = x + width - corner_radius + (corner_radius - seg_end),
+                .y = y + height - 1 - row,
+                .width = seg_width,
+                .height = 1,
+            },
+            .color = colour,
+        });
+    }
 }
 
 /*
- * Render a rounded rectangle border.
- * This draws the border as multiple rectangles to approximate rounded corners.
+ * Render corner masks to create the appearance of rounded content corners.
+ * This draws background-coloured shapes over the window corners.
  */
-static void render_rounded_border(struct wlr_render_pass *pass,
-                                  int x, int y, int width, int height,
-                                  int border_width, int radius,
-                                  const float colour[4])
+static void render_corner_masks(struct wlr_render_pass *pass,
+                                int x, int y, int width, int height,
+                                int corner_radius,
+                                float bg_r, float bg_g, float bg_b, float bg_a)
 {
-    /* Clamp radius to half the smallest dimension */
-    int max_radius = (width < height ? width : height) / 2;
-    if (radius > max_radius) {
-        radius = max_radius;
+    /* Skip if dimensions are too small or no rounding needed */
+    if (width <= 0 || height <= 0 || corner_radius <= 0) {
+        return;
     }
 
-    struct wlr_render_color col = {
-        .r = colour[0],
-        .g = colour[1],
-        .b = colour[2],
-        .a = colour[3],
-    };
+    struct wlr_render_color bg = { .r = bg_r, .g = bg_g, .b = bg_b, .a = bg_a };
 
-    /* Top edge (between corners) */
-    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-        .box = {
-            .x = x + radius,
-            .y = y,
-            .width = width - 2 * radius,
-            .height = border_width,
-        },
-        .color = col,
-    });
-
-    /* Bottom edge (between corners) */
-    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-        .box = {
-            .x = x + radius,
-            .y = y + height - border_width,
-            .width = width - 2 * radius,
-            .height = border_width,
-        },
-        .color = col,
-    });
-
-    /* Left edge (between corners) */
-    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-        .box = {
-            .x = x,
-            .y = y + radius,
-            .width = border_width,
-            .height = height - 2 * radius,
-        },
-        .color = col,
-    });
-
-    /* Right edge (between corners) */
-    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-        .box = {
-            .x = x + width - border_width,
-            .y = y + radius,
-            .width = border_width,
-            .height = height - 2 * radius,
-        },
-        .color = col,
-    });
+    /* Ensure corner radius doesn't exceed half the smallest dimension */
+    int max_radius = (width < height ? width : height) / 2;
+    if (corner_radius > max_radius) {
+        corner_radius = max_radius;
+    }
 
     /*
-     * Render corners using small rectangles to approximate arcs.
-     * We draw pixels that fall within the border ring of the corner circle.
+     * For each corner, draw background-coloured pixels outside the arc.
+     * We iterate row by row and fill the area outside the circle.
      */
-    for (int cy = 0; cy < radius; cy++) {
-        for (int cx = 0; cx < radius; cx++) {
-            /* Distance from corner centre */
-            double dx = radius - cx - 0.5;
-            double dy = radius - cy - 0.5;
-            double dist = sqrt(dx * dx + dy * dy);
+    double r = (double)corner_radius;
 
-            /* Check if pixel is within the border ring */
-            if (dist <= radius && dist >= radius - border_width) {
-                /* Top-left corner */
-                wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-                    .box = { .x = x + cx, .y = y + cy, .width = 1, .height = 1 },
-                    .color = col,
-                });
-
-                /* Top-right corner */
-                wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-                    .box = { .x = x + width - cx - 1, .y = y + cy, .width = 1, .height = 1 },
-                    .color = col,
-                });
-
-                /* Bottom-left corner */
-                wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-                    .box = { .x = x + cx, .y = y + height - cy - 1, .width = 1, .height = 1 },
-                    .color = col,
-                });
-
-                /* Bottom-right corner */
-                wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-                    .box = { .x = x + width - cx - 1, .y = y + height - cy - 1, .width = 1, .height = 1 },
-                    .color = col,
-                });
-            }
+    for (int row = 0; row < corner_radius; row++) {
+        double dy = corner_radius - row - 0.5;
+        double dx = 0;
+        if (dy <= r) {
+            dx = sqrt(r * r - dy * dy);
         }
+        int fill_width = (int)floor(corner_radius - dx);
+
+        if (fill_width <= 0) continue;
+
+        /* Top-left corner mask */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x, .y = y + row, .width = fill_width, .height = 1 },
+            .color = bg,
+        });
+
+        /* Top-right corner mask */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x + width - fill_width, .y = y + row, .width = fill_width, .height = 1 },
+            .color = bg,
+        });
+
+        /* Bottom-left corner mask */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x, .y = y + height - 1 - row, .width = fill_width, .height = 1 },
+            .color = bg,
+        });
+
+        /* Bottom-right corner mask */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = { .x = x + width - fill_width, .y = y + height - 1 - row, .width = fill_width, .height = 1 },
+            .color = bg,
+        });
     }
 }
 
@@ -630,83 +797,106 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
     struct wlr_box geo;
     wlr_xdg_surface_get_geometry(xdg_surface, &geo);
 
-    /* Calculate rendered window bounds */
-    int base_x = (int)round(screen_x) - (int)round(geo.x * canvas->scale);
-    int base_y = (int)round(screen_y) - (int)round(geo.y * canvas->scale);
-    int render_width = (int)round(geo.width * canvas->scale);
-    int render_height = (int)round(geo.height * canvas->scale);
-
-    /* Scale border and radius with canvas, but keep minimum values */
+    /* Calculate scaled dimensions */
     int scaled_border = (int)round(BORDER_WIDTH * canvas->scale);
     int scaled_radius = (int)round(CORNER_RADIUS * canvas->scale);
-    if (scaled_border < 1) scaled_border = 1;
-    if (scaled_radius < 2) scaled_radius = 2;
+    int content_x = (int)round(screen_x) - (int)round(geo.x * canvas->scale);
+    int content_y = (int)round(screen_y) - (int)round(geo.y * canvas->scale);
+    int content_width = (int)round(geo.width * canvas->scale);
+    int content_height = (int)round(geo.height * canvas->scale);
 
-    /*
-     * Interpolate border colour based on focus animation.
-     * Apply ease-out in both directions by easing the progress value
-     * relative to the direction of travel.
-     */
-    double t = view->focus_animation;
-    double eased_t;
-    if (view->focused) {
-        /* Focusing: ease-out from 0 to 1 */
-        eased_t = ease_out_cubic(t);
-    } else {
-        /* Unfocusing: ease-out from 1 to 0 (invert, ease, invert back) */
-        eased_t = 1.0 - ease_out_cubic(1.0 - t);
+    /* Skip rendering if content is too small to be visible */
+    if (content_width <= 0 || content_height <= 0) {
+        return;
     }
-    float border_colour[4] = {
-        lerp(BORDER_COLOUR_UNFOCUSED[0], BORDER_COLOUR_FOCUSED[0], (float)eased_t),
-        lerp(BORDER_COLOUR_UNFOCUSED[1], BORDER_COLOUR_FOCUSED[1], (float)eased_t),
-        lerp(BORDER_COLOUR_UNFOCUSED[2], BORDER_COLOUR_FOCUSED[2], (float)eased_t),
-        lerp(BORDER_COLOUR_UNFOCUSED[3], BORDER_COLOUR_FOCUSED[3], (float)eased_t),
-    };
 
-    /* Render border around the window */
-    render_rounded_border(pass,
-        base_x - scaled_border,
-        base_y - scaled_border,
-        render_width + 2 * scaled_border,
-        render_height + 2 * scaled_border,
-        scaled_border,
-        scaled_radius,
-        border_colour);
+    /* Ensure minimum values for border and radius */
+    if (scaled_border < 1) scaled_border = 1;
+    if (scaled_radius < 0) scaled_radius = 0;
 
-    /* Set up render data for surfaces */
+    /* Calculate border colour based on focus animation */
+    float anim_t = (float)view->focus_animation;
+    float border_r = lerp(BORDER_UNFOCUSED_R, BORDER_FOCUSED_R, anim_t);
+    float border_g = lerp(BORDER_UNFOCUSED_G, BORDER_FOCUSED_G, anim_t);
+    float border_b = lerp(BORDER_UNFOCUSED_B, BORDER_FOCUSED_B, anim_t);
+    float border_a = lerp(BORDER_UNFOCUSED_A, BORDER_FOCUSED_A, anim_t);
+
+    /* Render the border (outside the content area) */
+    int border_x = content_x - scaled_border;
+    int border_y = content_y - scaled_border;
+    int border_width = content_width + 2 * scaled_border;
+    int border_height = content_height + 2 * scaled_border;
+
+    /* Border corner radius includes the border width */
+    int border_corner_radius = scaled_radius + scaled_border;
+
+    /* Set up render data for surface content */
     struct render_data data = {
         .pass = pass,
         .view = view,
         .scale = canvas->scale,
-        .base_x = base_x,
-        .base_y = base_y,
+        .base_x = content_x,
+        .base_y = content_y,
     };
 
-    /* Render all surfaces in the XDG surface tree (includes subsurfaces) */
+    /*
+     * Rendering order:
+     * 1. Window content (rectangular texture)
+     * 2. Corner masks (rounds off the content corners with background colour)
+     * 3. Border (drawn on top so it's not covered by content or masks)
+     *
+     * This order ensures the border is always fully visible, including its
+     * rounded corners, which would otherwise be covered by the rectangular
+     * window texture.
+     */
+
+    /* 1. Render all surfaces in the XDG surface tree (includes subsurfaces) */
     wlr_xdg_surface_for_each_surface(xdg_surface, render_surface_iterator, &data);
+
+    /* 2. Render corner masks over the content to create rounded corners */
+    render_corner_masks(pass, content_x, content_y, content_width, content_height,
+                        scaled_radius, BG_COLOUR_R, BG_COLOUR_G, BG_COLOUR_B, BG_COLOUR_A);
+
+    /* 3. Render the border on top of everything */
+    render_border(pass, border_x, border_y, border_width, border_height,
+                  scaled_border, border_corner_radius,
+                  border_r, border_g, border_b, border_a);
 }
 
-void view_update_animation(struct infinidesk_view *view, double delta_time) {
-    double target = view->focused ? 1.0 : 0.0;
-    double diff = target - view->focus_animation;
-
-    if (fabs(diff) < 0.001) {
-        /* Close enough, snap to target */
-        view->focus_animation = target;
-        return;
-    }
-
-    /* Move towards target */
-    double step = FOCUS_ANIMATION_SPEED * delta_time;
-    if (diff > 0) {
-        view->focus_animation += step;
-        if (view->focus_animation > target) {
-            view->focus_animation = target;
+void view_update_focus_animations(struct infinidesk_server *server, uint32_t time_ms) {
+    struct infinidesk_view *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (!view->focus_anim_active) {
+            continue;
         }
-    } else {
-        view->focus_animation -= step;
-        if (view->focus_animation < target) {
-            view->focus_animation = target;
+
+        uint32_t elapsed = time_ms - view->focus_anim_start_ms;
+        double progress = (double)elapsed / VIEW_FOCUS_ANIM_DURATION_MS;
+
+        if (progress >= 1.0) {
+            /* Animation complete */
+            view->focus_animation = view->focused ? 1.0 : 0.0;
+            view->focus_anim_active = false;
+        } else {
+            /* Apply cubic ease-out */
+            double eased = ease_out_cubic(progress);
+            if (view->focused) {
+                /* Animating towards focused (0 -> 1) */
+                view->focus_animation = eased;
+            } else {
+                /* Animating towards unfocused (1 -> 0) */
+                view->focus_animation = 1.0 - eased;
+            }
         }
     }
+}
+
+bool view_any_animating(struct infinidesk_server *server) {
+    struct infinidesk_view *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->focus_anim_active) {
+            return true;
+        }
+    }
+    return false;
 }
