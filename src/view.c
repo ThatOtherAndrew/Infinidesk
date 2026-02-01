@@ -305,6 +305,14 @@ void view_close(struct infinidesk_view *view) {
     wlr_xdg_toplevel_send_close(view->xdg_toplevel);
 }
 
+void view_alt_tab(struct wl_list *views) {
+    if (wl_list_empty(views)) {
+        // Do Nothing
+        return;
+    }
+
+}
+
 void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int output_width, int output_height) {
     /* Get view dimensions */
     struct wlr_box geo;

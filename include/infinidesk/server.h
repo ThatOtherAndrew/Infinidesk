@@ -108,6 +108,10 @@ struct infinidesk_server {
 
     /* Modifier state for input handling */
     bool super_pressed;
+
+    /* Alt+Tab switcher state */
+    bool switcher_active;
+    struct infinidesk_view *switcher_selected;
 };
 
 /*
