@@ -9,7 +9,6 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdlib.h>
-#include <stdio.h>
 
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
@@ -234,16 +233,14 @@ struct infinidesk_view *server_view_at(
      * Custom hit testing that accounts for canvas scale.
      *
      * The scene graph doesn't know about our custom scaled rendering,
-     * so we must do hit testing ourselves in canvas coordinates.
+     * so we must do hit testing ourselves by matching the rendering logic.
      *
-     * 1. Convert screen coordinates to canvas coordinates
-     * 2. Find the topmost view containing that canvas point
-     * 3. Calculate surface-local coordinates accounting for scale
+     * Key insight: We render surfaces at scaled positions and sizes, so we
+     * must do hit testing in screen space against the scaled bounds, then
+     * convert back to surface-local coordinates.
      */
 
-    /* Convert screen position to canvas position */
-    double canvas_x, canvas_y;
-    screen_to_canvas(&server->canvas, lx, ly, &canvas_x, &canvas_y);
+    struct infinidesk_canvas *canvas = &server->canvas;
 
     /* Views are ordered front-to-back in the list (front first) */
     struct infinidesk_view *view;
@@ -252,34 +249,62 @@ struct infinidesk_view *server_view_at(
             continue;
         }
 
-        /* Get the view geometry in canvas coordinates */
+        /* Get the view geometry */
         struct wlr_box geo;
         wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
 
-        /* View bounds in canvas space */
-        double view_left = view->x;
-        double view_top = view->y;
-        double view_right = view->x + geo.width;
-        double view_bottom = view->y + geo.height;
+        /*
+         * Calculate where the view is rendered on screen.
+         * This must match the calculation in view_render().
+         *
+         * In view_render:
+         *   base_x = round(screen_x) - round(geo.x * scale)
+         *
+         * Where screen_x = (view->x - viewport_x) * scale
+         */
+        double screen_x, screen_y;
+        canvas_to_screen(canvas, view->x, view->y, &screen_x, &screen_y);
 
-        /* Check if canvas cursor is within view bounds */
-        if (canvas_x >= view_left && canvas_x < view_right &&
-            canvas_y >= view_top && canvas_y < view_bottom) {
+        /*
+         * The top-left corner of the rendered surface on screen.
+         * This accounts for CSD windows where geo.x/y may be non-zero.
+         */
+        double render_x = screen_x - geo.x * canvas->scale;
+        double render_y = screen_y - geo.y * canvas->scale;
+
+        /*
+         * The rendered size on screen. We use the geometry dimensions
+         * (the "window" portion) scaled by canvas scale.
+         */
+        double render_width = geo.width * canvas->scale;
+        double render_height = geo.height * canvas->scale;
+
+        /* Check if cursor (in screen coords) is within rendered geometry bounds */
+        if (lx >= render_x && lx < render_x + render_width &&
+            ly >= render_y && ly < render_y + render_height) {
 
             /*
-             * Found a view - now find the surface at this position.
-             * The cursor position relative to the view in canvas space.
+             * Found a view - calculate surface-local coordinates.
+             *
+             * The cursor position relative to where we started rendering
+             * (render_x, render_y), divided by scale, gives us the position
+             * in surface-local coordinates (since render starts at surface
+             * origin, i.e., (0,0) of the wl_surface).
              */
-            double local_x = canvas_x - view->x;
-            double local_y = canvas_y - view->y;
+            double surface_local_x = (lx - render_x) / canvas->scale;
+            double surface_local_y = (ly - render_y) / canvas->scale;
 
             /*
              * Use wlr_xdg_surface_surface_at to find the actual surface
-             * (handles subsurfaces, popups, etc.)
+             * (handles subsurfaces, popups, etc.). This function expects
+             * coordinates relative to the xdg_surface, which start at the
+             * wl_surface origin.
              */
             double sub_x, sub_y;
             struct wlr_surface *found_surface = wlr_xdg_surface_surface_at(
-                view->xdg_toplevel->base, local_x, local_y, &sub_x, &sub_y);
+                view->xdg_toplevel->base,
+                surface_local_x, surface_local_y,
+                &sub_x, &sub_y);
 
             if (found_surface) {
                 *surface = found_surface;
@@ -289,13 +314,12 @@ struct infinidesk_view *server_view_at(
             }
 
             /*
-             * If no surface found at exact point (e.g., window decorations
-             * with transparent areas), return the view anyway with the
-             * main surface.
+             * If no surface found at exact point (e.g., in transparent
+             * regions of CSD), return the main surface anyway.
              */
             *surface = view->xdg_toplevel->base->surface;
-            *sx = local_x + geo.x;  /* Add geo offset for CSD */
-            *sy = local_y + geo.y;
+            *sx = surface_local_x;
+            *sy = surface_local_y;
             return view;
         }
     }
