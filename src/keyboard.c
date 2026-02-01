@@ -161,6 +161,7 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
      * - Alt + D:      Toggle drawing mode
      * - Alt + C:      Clear all drawings
      * - Alt + U:      Undo last stroke
+     * - Alt + R:      Redo last stroke
      */
 
     /* Check for Alt modifier */
@@ -212,6 +213,12 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
     case XKB_KEY_U:
         /* Alt + U: Undo last stroke */
         drawing_undo_last(&server->drawing);
+        return true;
+
+    case XKB_KEY_r:
+    case XKB_KEY_R:
+        /* Alt + R: Redo last stroke */
+        drawing_redo_last(&server->drawing);
         return true;
 
     default:
