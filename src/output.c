@@ -244,12 +244,12 @@ static void output_render_custom(struct infinidesk_output *output) {
   render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 
   /* 6. Render drawing layer on top of everything */
-  drawing_render(&server->drawing, pass, width, height);
+  drawing_render(&server->drawing, pass, width, height, output_scale);
 
   /* Render UI panel if drawing mode is active */
   if (server->drawing.drawing_mode) {
     drawing_ui_render(&server->drawing.ui_panel, &server->drawing,
-                      pass, width, height);
+                      pass, width, height, output_scale);
   }
 
   /* Submit the render pass */

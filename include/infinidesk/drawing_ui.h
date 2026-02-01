@@ -58,11 +58,13 @@ void drawing_ui_init(struct drawing_ui_panel *panel, int screen_width, int scree
 
 /*
  * Render the UI panel.
+ * output_scale is the HiDPI scale factor for converting to physical pixels.
  */
 void drawing_ui_render(struct drawing_ui_panel *panel,
                        struct drawing_layer *drawing,
                        struct wlr_render_pass *pass,
-                       int screen_width, int screen_height);
+                       int screen_width, int screen_height,
+                       float output_scale);
 
 /*
  * Get the button at the given screen coordinates.

@@ -40,9 +40,9 @@ static void render_button(struct wlr_render_pass *pass, int x, int y,
 static void render_color_button(struct wlr_render_pass *pass, int x, int y,
                                int width, int height, struct drawing_color color,
                                bool is_selected, bool is_hovered);
-static void render_undo_icon(struct wlr_render_pass *pass, int x, int y);
-static void render_redo_icon(struct wlr_render_pass *pass, int x, int y);
-static void render_clear_icon(struct wlr_render_pass *pass, int x, int y);
+static void render_undo_icon(struct wlr_render_pass *pass, int x, int y, float scale);
+static void render_redo_icon(struct wlr_render_pass *pass, int x, int y, float scale);
+static void render_clear_icon(struct wlr_render_pass *pass, int x, int y, float scale);
 static int get_button_y(struct drawing_ui_panel *panel, int button_index);
 static bool is_color_equal(struct drawing_color a, struct drawing_color b);
 
@@ -70,18 +70,26 @@ void drawing_ui_init(struct drawing_ui_panel *panel, int screen_width, int scree
 void drawing_ui_render(struct drawing_ui_panel *panel,
                        struct drawing_layer *drawing,
                        struct wlr_render_pass *pass,
-                       int screen_width, int screen_height) {
+                       int screen_width, int screen_height,
+                       float output_scale) {
     (void)screen_width;
     (void)screen_height;
+
+    /*
+     * Scale all UI coordinates and sizes to physical pixels.
+     * The panel position/size are in logical coordinates, but we render
+     * in physical pixels.
+     */
+    float s = output_scale;
 
     /* Render panel background */
     float bg_color[] = UI_BG_COLOR;
     wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
         .box = {
-            .x = panel->x,
-            .y = panel->y,
-            .width = panel->width,
-            .height = panel->height,
+            .x = (int)(panel->x * s),
+            .y = (int)(panel->y * s),
+            .width = (int)(panel->width * s),
+            .height = (int)(panel->height * s),
         },
         .color = {
             .r = bg_color[0],
@@ -91,29 +99,31 @@ void drawing_ui_render(struct drawing_ui_panel *panel,
         },
     });
 
-    /* Button positions */
-    int button_x = panel->x + UI_PANEL_PADDING;
+    /* Button positions (scaled) */
+    int button_x = (int)((panel->x + UI_PANEL_PADDING) * s);
+    int button_w = (int)(UI_BUTTON_WIDTH * s);
+    int button_h = (int)(UI_BUTTON_HEIGHT * s);
 
     /* Color buttons */
-    render_color_button(pass, button_x, get_button_y(panel, 0),
-                       UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, COLOR_RED,
+    render_color_button(pass, button_x, (int)(get_button_y(panel, 0) * s),
+                       button_w, button_h, COLOR_RED,
                        is_color_equal(drawing->current_color, COLOR_RED),
                        panel->hovered_button == UI_BUTTON_COLOR_RED);
 
-    render_color_button(pass, button_x, get_button_y(panel, 1),
-                       UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, COLOR_GREEN,
+    render_color_button(pass, button_x, (int)(get_button_y(panel, 1) * s),
+                       button_w, button_h, COLOR_GREEN,
                        is_color_equal(drawing->current_color, COLOR_GREEN),
                        panel->hovered_button == UI_BUTTON_COLOR_GREEN);
 
-    render_color_button(pass, button_x, get_button_y(panel, 2),
-                       UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, COLOR_BLUE,
+    render_color_button(pass, button_x, (int)(get_button_y(panel, 2) * s),
+                       button_w, button_h, COLOR_BLUE,
                        is_color_equal(drawing->current_color, COLOR_BLUE),
                        panel->hovered_button == UI_BUTTON_COLOR_BLUE);
 
     /* Action buttons (after separator) */
-    int undo_y = get_button_y(panel, 3);
-    int redo_y = get_button_y(panel, 4);
-    int clear_y = get_button_y(panel, 5);
+    int undo_y = (int)(get_button_y(panel, 3) * s);
+    int redo_y = (int)(get_button_y(panel, 4) * s);
+    int clear_y = (int)(get_button_y(panel, 5) * s);
 
     /* Undo button */
     float undo_color[4];
@@ -124,8 +134,8 @@ void drawing_ui_render(struct drawing_ui_panel *panel,
         float normal[] = UI_BUTTON_NORMAL;
         memcpy(undo_color, normal, sizeof(undo_color));
     }
-    render_button(pass, button_x, undo_y, UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, undo_color);
-    render_undo_icon(pass, button_x, undo_y);
+    render_button(pass, button_x, undo_y, button_w, button_h, undo_color);
+    render_undo_icon(pass, button_x, undo_y, s);
 
     /* Redo button */
     float redo_color[4];
@@ -136,8 +146,8 @@ void drawing_ui_render(struct drawing_ui_panel *panel,
         float normal[] = UI_BUTTON_NORMAL;
         memcpy(redo_color, normal, sizeof(redo_color));
     }
-    render_button(pass, button_x, redo_y, UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, redo_color);
-    render_redo_icon(pass, button_x, redo_y);
+    render_button(pass, button_x, redo_y, button_w, button_h, redo_color);
+    render_redo_icon(pass, button_x, redo_y, s);
 
     /* Clear button */
     float clear_color[4];
@@ -148,8 +158,8 @@ void drawing_ui_render(struct drawing_ui_panel *panel,
         float normal[] = UI_BUTTON_NORMAL;
         memcpy(clear_color, normal, sizeof(clear_color));
     }
-    render_button(pass, button_x, clear_y, UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, clear_color);
-    render_clear_icon(pass, button_x, clear_y);
+    render_button(pass, button_x, clear_y, button_w, button_h, clear_color);
+    render_clear_icon(pass, button_x, clear_y, s);
 }
 
 enum drawing_ui_button drawing_ui_get_button_at(struct drawing_ui_panel *panel,
@@ -289,18 +299,26 @@ static void render_color_button(struct wlr_render_pass *pass, int x, int y,
     });
 }
 
-static void render_undo_icon(struct wlr_render_pass *pass, int x, int y) {
+static void render_undo_icon(struct wlr_render_pass *pass, int x, int y, float scale) {
     float icon_color[] = UI_ICON_COLOR;
-    int center_x = x + UI_BUTTON_WIDTH / 2;
-    int center_y = y + UI_BUTTON_HEIGHT / 2;
+    int button_w = (int)(UI_BUTTON_WIDTH * scale);
+    int button_h = (int)(UI_BUTTON_HEIGHT * scale);
+    int center_x = x + button_w / 2;
+    int center_y = y + button_h / 2;
 
     /* Left-pointing triangle */
-    for (int i = 0; i < 12; i++) {
+    int icon_size = (int)(12 * scale);
+    int line_w = (int)(2 * scale);
+    if (line_w < 1) line_w = 1;
+
+    for (int i = 0; i < icon_size; i++) {
+        int h = (int)((i * 2 + 1) * scale / icon_size * icon_size);
+        if (h < 1) h = 1;
         wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
             .box = {
-                .x = center_x - 6 + i,
+                .x = center_x - (int)(6 * scale) + i,
                 .y = center_y - i,
-                .width = 2,
+                .width = line_w,
                 .height = i * 2 + 1,
             },
             .color = {
@@ -313,18 +331,24 @@ static void render_undo_icon(struct wlr_render_pass *pass, int x, int y) {
     }
 }
 
-static void render_redo_icon(struct wlr_render_pass *pass, int x, int y) {
+static void render_redo_icon(struct wlr_render_pass *pass, int x, int y, float scale) {
     float icon_color[] = UI_ICON_COLOR;
-    int center_x = x + UI_BUTTON_WIDTH / 2;
-    int center_y = y + UI_BUTTON_HEIGHT / 2;
+    int button_w = (int)(UI_BUTTON_WIDTH * scale);
+    int button_h = (int)(UI_BUTTON_HEIGHT * scale);
+    int center_x = x + button_w / 2;
+    int center_y = y + button_h / 2;
 
     /* Right-pointing triangle */
-    for (int i = 0; i < 12; i++) {
+    int icon_size = (int)(12 * scale);
+    int line_w = (int)(2 * scale);
+    if (line_w < 1) line_w = 1;
+
+    for (int i = 0; i < icon_size; i++) {
         wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
             .box = {
-                .x = center_x + 6 - i,
+                .x = center_x + (int)(6 * scale) - i,
                 .y = center_y - i,
-                .width = 2,
+                .width = line_w,
                 .height = i * 2 + 1,
             },
             .color = {
@@ -337,13 +361,17 @@ static void render_redo_icon(struct wlr_render_pass *pass, int x, int y) {
     }
 }
 
-static void render_clear_icon(struct wlr_render_pass *pass, int x, int y) {
+static void render_clear_icon(struct wlr_render_pass *pass, int x, int y, float scale) {
     float icon_color[] = UI_ICON_COLOR;
-    int center_x = x + UI_BUTTON_WIDTH / 2;
-    int center_y = y + UI_BUTTON_HEIGHT / 2;
+    int button_w = (int)(UI_BUTTON_WIDTH * scale);
+    int button_h = (int)(UI_BUTTON_HEIGHT * scale);
+    int center_x = x + button_w / 2;
+    int center_y = y + button_h / 2;
 
     /* X shape using two diagonal rectangles */
-    int size = 16;
+    int size = (int)(16 * scale);
+    int dot_size = (int)(3 * scale);
+    if (dot_size < 1) dot_size = 1;
 
     /* Top-left to bottom-right diagonal */
     for (int i = 0; i < size; i++) {
@@ -351,8 +379,8 @@ static void render_clear_icon(struct wlr_render_pass *pass, int x, int y) {
             .box = {
                 .x = center_x - size/2 + i,
                 .y = center_y - size/2 + i,
-                .width = 3,
-                .height = 3,
+                .width = dot_size,
+                .height = dot_size,
             },
             .color = {
                 .r = icon_color[0],
@@ -369,8 +397,8 @@ static void render_clear_icon(struct wlr_render_pass *pass, int x, int y) {
             .box = {
                 .x = center_x + size/2 - i,
                 .y = center_y - size/2 + i,
-                .width = 3,
-                .height = 3,
+                .width = dot_size,
+                .height = dot_size,
             },
             .color = {
                 .r = icon_color[0],
