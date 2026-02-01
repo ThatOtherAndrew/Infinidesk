@@ -30,15 +30,3 @@ The [PangoCairo](https://docs.gtk.org/PangoCairo/pango_cairo.html) text renderin
 Claude 4.5 Opus was used via OpenCode and Claude Code for scaffolding and debugging the project.
 
 To ensure deterministic and reliable builds, a [Nix](https://nixos.org/) flake is used to build and run Infinidesk.
-
-## Challenges
-
-One notable, recurring challenge during the implementation of Infinidesk was dealing with high-DPI scaling issues, especially since my laptop has fractional scaling - a notorious problem with desktop app development. It constantly resulted in desyncs between e.g. cursor position and Wayland client hit location, as well as window contents vs borders, amongst other sync issues. This was solved by establishing a consistent pattern for including the scale factor when handling scaling calculations, to ensure consistent behaviour.
-
-Another challenge is that various apps have completely differing rendering pipelines and graphics libraries - meaning that every time a new app was launched, it had a high chance of crashing the entire compositor due to some new edge case. There was no one-size-fits-all solution for this - it just required a lot of testing of various apps, and handling them on a case-by-case basis, gradually improving the reliability and robustness of the compositor.
-
-## Accomplishments that we're proud of
-
-## What we learned
-
-## What's next for Infinidesk
