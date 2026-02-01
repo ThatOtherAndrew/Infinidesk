@@ -253,6 +253,22 @@ void view_close(struct infinidesk_view *view) {
     wlr_xdg_toplevel_send_close(view->xdg_toplevel);
 }
 
+void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view) {
+    /* Get view dimensions */                                                                                                                                   
+    struct wlr_box geo;                                                                                                                                         
+    wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+    /* Center the viewport on the view's center */                                                                                                              
+    double view_center_x = view->x + geo.width / 2.0;                                                                                                           
+    double view_center_y = view->y + geo.height / 2.0;
+
+    /* Set viewport so view center is at screen center */
+    canvas->viewport_x = view_center_x;
+    canvas->viewport_y = view_center_y;
+
+    canvas_update_view_positions(canvas);
+}
+
 /* Event handlers */
 
 static void handle_map(struct wl_listener *listener, void *data) {
