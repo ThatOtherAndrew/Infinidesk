@@ -68,6 +68,7 @@ struct infinidesk_view *view_create(struct infinidesk_server *server,
 
     view->server = server;
     view->xdg_toplevel = xdg_toplevel;
+    view->id = server->next_view_id++;
 
     /* Create the scene tree for this view */
     view->scene_tree = wlr_scene_xdg_surface_create(
@@ -303,6 +304,39 @@ void view_move_end(struct infinidesk_view *view) {
 
 void view_close(struct infinidesk_view *view) {
     wlr_xdg_toplevel_send_close(view->xdg_toplevel);
+}
+
+void view_alt_tab(struct wl_list *views) {
+    if (wl_list_empty(views)) {
+        // Do Nothing
+        return;
+    }
+
+}
+
+void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int output_width, int output_height) {
+    /* Get view dimensions */
+    struct wlr_box geo;
+    wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+    /* Calculate view center in canvas coordinates */
+    double view_center_x = view->x + geo.width / 2.0;
+    double view_center_y = view->y + geo.height / 2.0;
+
+    /* Store current position as animation start */
+    canvas->snap_start_x = canvas->viewport_x;
+    canvas->snap_start_y = canvas->viewport_y;
+
+    /* Calculate target viewport position (view center at screen center) */
+    canvas->snap_target_x = view_center_x - (output_width / 2.0) / canvas->scale;
+    canvas->snap_target_y = view_center_y - (output_height / 2.0) / canvas->scale;
+
+    /* Start animation */
+    canvas->snap_anim_start_ms = get_time_ms();
+    canvas->snap_anim_active = true;
+
+    view_focus(view);
+    view_raise(view);
 }
 
 /* Event handlers */

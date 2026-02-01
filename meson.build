@@ -20,6 +20,9 @@ wayland_server = dependency('wayland-server')
 wayland_protos = dependency('wayland-protocols')
 xkbcommon = dependency('xkbcommon')
 pixman = dependency('pixman-1')
+cairo = dependency('cairo')
+pangocairo = dependency('pangocairo')
+libdrm = dependency('libdrm')
 math = cc.find_library('m', required: false)
 
 # Wayland scanner for protocol generation
@@ -74,6 +77,7 @@ infinidesk_sources = files(
   'src/xdg_shell.c',
   'src/layer_shell.c',
   'src/background.c',
+  'src/switcher.c',
 )
 
 # Compiler flags
@@ -93,6 +97,9 @@ executable('infinidesk',
     wayland_server,
     xkbcommon,
     pixman,
+    cairo,
+    pangocairo,
+    libdrm,
     math,
   ],
   install: true,

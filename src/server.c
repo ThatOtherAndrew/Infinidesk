@@ -29,6 +29,7 @@
 #include "infinidesk/server.h"
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
+#include "infinidesk/switcher.h"
 #include "infinidesk/output.h"
 #include "infinidesk/input.h"
 #include "infinidesk/cursor.h"
@@ -154,6 +155,9 @@ bool server_init(struct infinidesk_server *server) {
     /* Initialise drawing layer */
     drawing_init(&server->drawing, server);
 
+    /* Initialise alt-tab switcher */
+    switcher_init(&server->switcher, server);
+
     /* Initialise output handling */
     output_init(server);
 
@@ -226,6 +230,9 @@ void server_finish(struct infinidesk_server *server) {
 
     /* Clean up drawing layer */
     drawing_finish(&server->drawing);
+
+    /* Clean up switcher */
+    switcher_finish(&server->switcher);
 
     /* Note: Most resources are automatically cleaned up when the display
      * is destroyed, as they're attached to it. We explicitly clean up

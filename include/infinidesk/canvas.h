@@ -10,9 +10,13 @@
 #define INFINIDESK_CANVAS_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /* Forward declaration */
 struct infinidesk_server;
+
+/* Animation duration for viewport snap (in milliseconds) */
+#define CANVAS_SNAP_DURATION_MS 800
 
 /*
  * The infinite canvas state.
@@ -42,6 +46,12 @@ struct infinidesk_canvas {
 
     /* Reference to server for updating views */
     struct infinidesk_server *server;
+
+    /* Viewport snap animation state */
+    bool snap_anim_active;
+    uint32_t snap_anim_start_ms;
+    double snap_start_x, snap_start_y;
+    double snap_target_x, snap_target_y;
 };
 
 /*
@@ -126,5 +136,11 @@ void canvas_update_view_positions(struct infinidesk_canvas *canvas);
 void canvas_get_viewport_centre(struct infinidesk_canvas *canvas,
                                 int output_width, int output_height,
                                 double *centre_x, double *centre_y);
+
+/*
+ * Update the viewport snap animation.
+ * Call this each frame from the render loop.
+ */
+void canvas_update_snap_animation(struct infinidesk_canvas *canvas, uint32_t time_ms);
 
 #endif /* INFINIDESK_CANVAS_H */

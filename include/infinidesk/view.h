@@ -18,6 +18,7 @@
 
 /* Forward declaration */
 struct infinidesk_server;
+struct infinidesk_canvas;                                                                                                                                       
 
 /* Animation duration in milliseconds */
 #define VIEW_FOCUS_ANIM_DURATION_MS 200
@@ -34,6 +35,9 @@ struct infinidesk_view {
 
     struct wlr_xdg_toplevel *xdg_toplevel;
     struct wlr_scene_tree *scene_tree;
+
+    /* Unique view identifier for alt-tab matching */
+    uint32_t id;
 
     /* Position in canvas coordinates */
     double x;
@@ -142,6 +146,11 @@ void view_close(struct infinidesk_view *view);
  */
 void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
                  float output_scale);
+
+/* 
+ * Snaps to a view
+ */
+void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int, int);
 
 /*
  * Update focus animation state for all views.

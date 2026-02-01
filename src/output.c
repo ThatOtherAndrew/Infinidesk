@@ -25,6 +25,7 @@
 #include "infinidesk/layer_shell.h"
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
+#include "infinidesk/switcher.h"
 #include "infinidesk/view.h"
 
 /* Background colour */
@@ -182,6 +183,9 @@ static void output_render_custom(struct infinidesk_output *output) {
   /* Update focus animations */
   view_update_focus_animations(server, time_ms);
 
+  /* Update viewport snap animation */
+  canvas_update_snap_animation(&server->canvas, time_ms);
+
   /* Initialise output state */
   struct wlr_output_state state;
   wlr_output_state_init(&state);
@@ -251,6 +255,9 @@ static void output_render_custom(struct infinidesk_output *output) {
     drawing_ui_render(&server->drawing.ui_panel, &server->drawing,
                       pass, width, height, output_scale);
   }
+
+  /* Render alt-tab switcher overlay */
+  switcher_render(&server->switcher, pass, width, height, output_scale);
 
   /* Submit the render pass */
   wlr_render_pass_submit(pass);

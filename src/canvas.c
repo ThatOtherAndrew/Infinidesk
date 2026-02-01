@@ -40,6 +40,14 @@ void canvas_init(struct infinidesk_canvas *canvas, struct infinidesk_server *ser
     canvas->pan_start_viewport_x = 0.0;
     canvas->pan_start_viewport_y = 0.0;
 
+    /* No snap animation initially */
+    canvas->snap_anim_active = false;
+    canvas->snap_anim_start_ms = 0;
+    canvas->snap_start_x = 0.0;
+    canvas->snap_start_y = 0.0;
+    canvas->snap_target_x = 0.0;
+    canvas->snap_target_y = 0.0;
+
     wlr_log(WLR_DEBUG, "Canvas initialised at origin with scale 1.0");
 }
 
@@ -176,4 +184,35 @@ void canvas_get_viewport_centre(struct infinidesk_canvas *canvas,
                      output_width / 2.0,
                      output_height / 2.0,
                      centre_x, centre_y);
+}
+
+/* Cubic ease-out: starts fast, decelerates smoothly */
+static double ease_out_cubic(double t) {
+    double inv = 1.0 - t;
+    return 1.0 - (inv * inv * inv);
+}
+
+void canvas_update_snap_animation(struct infinidesk_canvas *canvas, uint32_t time_ms) {
+    if (!canvas->snap_anim_active) {
+        return;
+    }
+
+    uint32_t elapsed = time_ms - canvas->snap_anim_start_ms;
+    double progress = (double)elapsed / CANVAS_SNAP_DURATION_MS;
+
+    if (progress >= 1.0) {
+        /* Animation complete */
+        canvas->viewport_x = canvas->snap_target_x;
+        canvas->viewport_y = canvas->snap_target_y;
+        canvas->snap_anim_active = false;
+    } else {
+        /* Apply cubic ease-out */
+        double t = ease_out_cubic(progress);
+        canvas->viewport_x = canvas->snap_start_x +
+            (canvas->snap_target_x - canvas->snap_start_x) * t;
+        canvas->viewport_y = canvas->snap_start_y +
+            (canvas->snap_target_y - canvas->snap_start_y) * t;
+    }
+
+    canvas_update_view_positions(canvas);
 }

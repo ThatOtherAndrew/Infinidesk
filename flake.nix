@@ -33,6 +33,9 @@
               wlr-protocols
               libxkbcommon
               pixman
+              cairo
+              pango
+              libdrm
             ];
 
             meta = with pkgs.lib; {
