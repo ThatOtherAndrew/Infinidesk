@@ -157,4 +157,10 @@ void view_update_focus_animations(struct infinidesk_server *server, uint32_t tim
  */
 bool view_any_animating(struct infinidesk_server *server);
 
+/*
+ * Gather all views so they are exactly minimum_gap pixels apart (edge-to-edge),
+ * preserving relative directional positioning, and center on viewport.
+ */
+void views_gather(struct infinidesk_server *server, double minimum_gap);
+
 #endif /* INFINIDESK_VIEW_H */

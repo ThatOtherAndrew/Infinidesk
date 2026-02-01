@@ -181,7 +181,7 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
      * - Alt + D:      Toggle drawing mode
      * - Alt + C:      Clear all drawings
      * - Alt + U:      Undo last stroke
-     * - Alt + F:      Focus on first view (testing)
+     * - Alt + G:      Gather windows to center
      * - Alt + Tab:    Cycle windows (release Alt to confirm)
      */
 
@@ -234,6 +234,12 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
     case XKB_KEY_U:
         /* Alt + U: Undo last stroke */
         drawing_undo_last(&server->drawing);
+        return true;
+
+    case XKB_KEY_g:
+    case XKB_KEY_G:
+        /* Alt + G: Gather all windows to center */
+        views_gather(server, 20.0);  /* 20px minimum gap */
         return true;
 
     case XKB_KEY_Tab:

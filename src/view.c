@@ -12,6 +12,10 @@
 #include <math.h>
 #include <time.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
@@ -306,14 +310,6 @@ void view_close(struct infinidesk_view *view) {
     wlr_xdg_toplevel_send_close(view->xdg_toplevel);
 }
 
-void view_alt_tab(struct wl_list *views) {
-    if (wl_list_empty(views)) {
-        // Do Nothing
-        return;
-    }
-
-}
-
 void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int output_width, int output_height) {
     /* Get view dimensions */
     struct wlr_box geo;
@@ -337,6 +333,185 @@ void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, i
 
     view_focus(view);
     view_raise(view);
+}
+
+void views_gather(struct infinidesk_server *server, double minimum_gap) {
+    if (wl_list_empty(&server->views)) {
+        return;
+    }
+
+    /* Get viewport center */
+    struct infinidesk_output *output = output_get_primary(server);
+    if (!output) {
+        return;
+    }
+
+    int screen_width, screen_height;
+    output_get_effective_resolution(output, &screen_width, &screen_height);
+
+    double viewport_center_x, viewport_center_y;
+    canvas_get_viewport_centre(&server->canvas, screen_width, screen_height,
+                               &viewport_center_x, &viewport_center_y);
+
+    /* First, calculate initial centroid */
+    int count = 0;
+    double centroid_x = 0.0, centroid_y = 0.0;
+    struct infinidesk_view *view;
+
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+        centroid_x += view->x + geo.width / 2.0;
+        centroid_y += view->y + geo.height / 2.0;
+        count++;
+    }
+
+    if (count == 0) {
+        return;
+    }
+
+    centroid_x /= count;
+    centroid_y /= count;
+
+    /*
+     * First pass: calculate average distance from centroid.
+     * This tells us how spread out views currently are.
+     */
+    double avg_dist = 0.0;
+    int far_count = 0;
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+        double view_cx = view->x + geo.width / 2.0;
+        double view_cy = view->y + geo.height / 2.0;
+        double dist = sqrt(
+            (view_cx - centroid_x) * (view_cx - centroid_x) +
+            (view_cy - centroid_y) * (view_cy - centroid_y));
+        if (dist > 20.0) {
+            avg_dist += dist;
+            far_count++;
+        }
+    }
+    if (far_count > 0) {
+        avg_dist /= far_count;
+    } else {
+        /* All views are near centroid - use a reasonable default */
+        avg_dist = 150.0;
+    }
+
+    /*
+     * Second pass: ensure every view has a non-zero offset from centroid.
+     * Views at the centroid can't be separated by scaling alone.
+     * Give them an offset proportional to existing spread.
+     */
+    int idx = 0;
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+        double view_cx = view->x + geo.width / 2.0;
+        double view_cy = view->y + geo.height / 2.0;
+
+        /* Check if view is at/near the centroid */
+        double dist_from_centroid = sqrt(
+            (view_cx - centroid_x) * (view_cx - centroid_x) +
+            (view_cy - centroid_y) * (view_cy - centroid_y));
+
+        if (dist_from_centroid < 20.0) {
+            /* Give it a unique offset direction, proportional to existing spread */
+            double angle = idx * 2.0 * M_PI / count;
+            double offset_dist = avg_dist * 0.8;  /* Place at 80% of average distance */
+            view->x += cos(angle) * offset_dist;
+            view->y += sin(angle) * offset_dist;
+        }
+        idx++;
+    }
+
+    /* Recalculate centroid after offsets */
+    centroid_x = 0.0;
+    centroid_y = 0.0;
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+        centroid_x += view->x + geo.width / 2.0;
+        centroid_y += view->y + geo.height / 2.0;
+    }
+    centroid_x /= count;
+    centroid_y /= count;
+
+    /*
+     * Find the scale factor that ensures minimum_gap between all window pairs.
+     * Scaling uniformly from centroid preserves ALL relative positions.
+     */
+    double scale = 0.0;
+
+    struct infinidesk_view *view_a, *view_b;
+    wl_list_for_each(view_a, &server->views, link) {
+        struct wlr_box geo_a;
+        wlr_xdg_surface_get_geometry(view_a->xdg_toplevel->base, &geo_a);
+        double ca_x = view_a->x + geo_a.width / 2.0;
+        double ca_y = view_a->y + geo_a.height / 2.0;
+
+        wl_list_for_each(view_b, &server->views, link) {
+            if (view_b == view_a) continue;
+            if ((uintptr_t)view_b <= (uintptr_t)view_a) continue;
+
+            struct wlr_box geo_b;
+            wlr_xdg_surface_get_geometry(view_b->xdg_toplevel->base, &geo_b);
+            double cb_x = view_b->x + geo_b.width / 2.0;
+            double cb_y = view_b->y + geo_b.height / 2.0;
+
+            /* Current separation between centers */
+            double dx = cb_x - ca_x;
+            double dy = cb_y - ca_y;
+
+            /* Required separation for minimum_gap between edges */
+            double req_horiz = (geo_a.width + geo_b.width) / 2.0 + minimum_gap;
+            double req_vert = (geo_a.height + geo_b.height) / 2.0 + minimum_gap;
+
+            /* Scale needed for each axis (need only one to be satisfied) */
+            double scale_h = (fabs(dx) > 0.001) ? req_horiz / fabs(dx) : 1e9;
+            double scale_v = (fabs(dy) > 0.001) ? req_vert / fabs(dy) : 1e9;
+            double pair_scale = fmin(scale_h, scale_v);
+
+            if (pair_scale > scale) {
+                scale = pair_scale;
+            }
+        }
+    }
+
+    /* Ensure minimum scale */
+    if (scale < 0.001) {
+        scale = 1.0;
+    }
+
+    wlr_log(WLR_DEBUG, "Gather: scale %.2f for gap %.0f", scale, minimum_gap);
+
+    /*
+     * Apply: scale positions from centroid, then translate centroid to viewport center.
+     * new_pos = viewport_center + (old_pos - centroid) * scale
+     */
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+        double view_cx = view->x + geo.width / 2.0;
+        double view_cy = view->y + geo.height / 2.0;
+
+        /* Offset from centroid, scaled */
+        double dx = (view_cx - centroid_x) * scale;
+        double dy = (view_cy - centroid_y) * scale;
+
+        /* New center = viewport center + scaled offset */
+        double new_cx = viewport_center_x + dx;
+        double new_cy = viewport_center_y + dy;
+
+        view->x = new_cx - geo.width / 2.0;
+        view->y = new_cy - geo.height / 2.0;
+
+        view_update_scene_position(view);
+    }
+
+    wlr_log(WLR_DEBUG, "Gathered %d views", count);
 }
 
 /* Event handlers */
