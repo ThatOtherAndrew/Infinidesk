@@ -12,9 +12,13 @@
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/util/box.h>
 
 /* Forward declaration */
 struct infinidesk_server;
+
+/* Number of layer shell layers (background, bottom, top, overlay) */
+#define LAYER_SHELL_LAYER_COUNT 4
 
 /*
  * Output (monitor) wrapper.
@@ -25,6 +29,15 @@ struct infinidesk_output {
 
     struct wlr_output *wlr_output;
     struct wlr_scene_output *scene_output;
+
+    /* Layer shell: scene trees for each layer (background, bottom, top, overlay) */
+    struct wlr_scene_tree *layer_trees[LAYER_SHELL_LAYER_COUNT];
+
+    /* Layer shell: surfaces on this output, one list per layer */
+    struct wl_list layer_surfaces[LAYER_SHELL_LAYER_COUNT];
+
+    /* Usable area after accounting for exclusive zones */
+    struct wlr_box usable_area;
 
     struct wl_listener frame;
     struct wl_listener request_state;
