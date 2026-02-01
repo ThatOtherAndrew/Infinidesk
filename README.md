@@ -14,13 +14,26 @@ Infinidesk is a new, **spatially-oriented** way to navigate your desktop. Drawin
 
 - **Wayland-native:** Supports the latest and greatest apps right out of the box.
 - **Touchpad gesture support:** Zoom across the canvas with 2-finger pan!
+- **Fast navigation:** Use alt+tab to rapidly warp between windows.
 - **Freeform zoom:** Zoom in to fine app details, or out to show more windows!
 - **Shell layering:** Run a wallpaper daemon on the bottom layer, or render a taskbar over the top.
 - **Built-in annotations:** Draw and markup in and around your windows with a built-in pen tool!
 
-## How we built it
+## Implementation
 
-## Challenges we ran into
+Infinidesk is written in pure C, making use of the [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) Wayland compositor library/framework for the really low-level stuff (damage tracking, user input registration, low-level graphics).
+
+Wayland clients (apps) can attempt to call a range of different protocol functions for different functionality (e.g. layering, or input device capture). A range of different protocols were implemented, with `src/layer_shell.c` being a good example of an implementation of the `wlr-layer-shell-unstable-v1` protocol.
+
+The [PangoCairo](https://docs.gtk.org/PangoCairo/pango_cairo.html) text rendering library is used for rendering fonts in e.g. the alt-tab switcher.
+
+Claude 4.5 Opus was used via OpenCode and Claude Code for scaffolding and debugging the project.
+
+To ensure deterministic and reliable builds, a [Nix](https://nixos.org/) flake is used to build and run Infinidesk.
+
+## Challenges
+
+One notable, recurring challenge during the implementation of Infinidesk was dealing with high-DPI scaling issues, especially since my laptop has fractional scaling - a notorious problem with desktop app development. It constantly resulted in desyncs between e.g. cursor position and Wayland client hit location, as well as window contents vs borders, amongst other sync issues. This was solved by establishing a consistent pattern for including the scale factor when handling scaling calculations, to ensure consistent behaviour.
 
 ## Accomplishments that we're proud of
 
