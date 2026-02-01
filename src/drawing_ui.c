@@ -272,6 +272,7 @@ static void render_color_button(struct wlr_render_pass *pass, int x, int y,
     int swatch_x = x + (width - swatch_size) / 2;
     int swatch_y = y + (height - swatch_size) / 2;
 
+    float swatch_color[4] = {color.r, color.g, color.b, 1.0f};
     wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
         .box = {
             .x = swatch_x,
@@ -280,10 +281,10 @@ static void render_color_button(struct wlr_render_pass *pass, int x, int y,
             .height = swatch_size,
         },
         .color = {
-            .r = color.r,
-            .g = color.g,
-            .b = color.b,
-            .a = 1.0f,
+            .r = swatch_color[0],
+            .g = swatch_color[1],
+            .b = swatch_color[2],
+            .a = swatch_color[3],
         },
     });
 }
@@ -293,30 +294,53 @@ static void render_undo_icon(struct wlr_render_pass *pass, int x, int y) {
     int center_x = x + UI_BUTTON_WIDTH / 2;
     int center_y = y + UI_BUTTON_HEIGHT / 2;
 
-    /* Horizontal line */
-    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-        .box = {
-            .x = center_x - 12,
-            .y = center_y - 2,
-            .width = 18,
-            .height = 4,
-        },
-        .color = {
-            .r = icon_color[0],
-            .g = icon_color[1],
-            .b = icon_color[2],
-            .a = icon_color[3],
-        },
-    });
+    /* Curved arrow body - left side arc */
+    int radius = 10;
+    for (int angle = 60; angle <= 300; angle += 10) {
+        double rad = angle * 3.14159 / 180.0;
+        int arc_x = center_x + (int)(radius * cos(rad));
+        int arc_y = center_y + (int)(radius * sin(rad));
 
-    /* Left-pointing triangle */
-    for (int i = 0; i < 8; i++) {
         wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
             .box = {
-                .x = center_x - 12 - i,
-                .y = center_y - i,
-                .width = 1,
-                .height = i * 2 + 1,
+                .x = arc_x - 1,
+                .y = arc_y - 1,
+                .width = 3,
+                .height = 3,
+            },
+            .color = {
+                .r = icon_color[0],
+                .g = icon_color[1],
+                .b = icon_color[2],
+                .a = icon_color[3],
+            },
+        });
+    }
+
+    /* Arrow head pointing left and up */
+    for (int i = 0; i < 7; i++) {
+        /* Upward pointing part */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = center_x - radius + 4,
+                .y = center_y - radius - 3 + i,
+                .width = 2,
+                .height = 2,
+            },
+            .color = {
+                .r = icon_color[0],
+                .g = icon_color[1],
+                .b = icon_color[2],
+                .a = icon_color[3],
+            },
+        });
+        /* Leftward pointing part */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = center_x - radius + 4 - i,
+                .y = center_y - radius + 3,
+                .width = 2,
+                .height = 2,
             },
             .color = {
                 .r = icon_color[0],
@@ -333,30 +357,53 @@ static void render_redo_icon(struct wlr_render_pass *pass, int x, int y) {
     int center_x = x + UI_BUTTON_WIDTH / 2;
     int center_y = y + UI_BUTTON_HEIGHT / 2;
 
-    /* Horizontal line */
-    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-        .box = {
-            .x = center_x - 6,
-            .y = center_y - 2,
-            .width = 18,
-            .height = 4,
-        },
-        .color = {
-            .r = icon_color[0],
-            .g = icon_color[1],
-            .b = icon_color[2],
-            .a = icon_color[3],
-        },
-    });
+    /* Curved arrow body - right side arc */
+    int radius = 10;
+    for (int angle = -120; angle <= 120; angle += 10) {
+        double rad = angle * 3.14159 / 180.0;
+        int arc_x = center_x + (int)(radius * cos(rad));
+        int arc_y = center_y + (int)(radius * sin(rad));
 
-    /* Right-pointing triangle */
-    for (int i = 0; i < 8; i++) {
         wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
             .box = {
-                .x = center_x + 12 + i,
-                .y = center_y - i,
-                .width = 1,
-                .height = i * 2 + 1,
+                .x = arc_x - 1,
+                .y = arc_y - 1,
+                .width = 3,
+                .height = 3,
+            },
+            .color = {
+                .r = icon_color[0],
+                .g = icon_color[1],
+                .b = icon_color[2],
+                .a = icon_color[3],
+            },
+        });
+    }
+
+    /* Arrow head pointing right and up */
+    for (int i = 0; i < 7; i++) {
+        /* Upward pointing part */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = center_x + radius - 4,
+                .y = center_y - radius - 3 + i,
+                .width = 2,
+                .height = 2,
+            },
+            .color = {
+                .r = icon_color[0],
+                .g = icon_color[1],
+                .b = icon_color[2],
+                .a = icon_color[3],
+            },
+        });
+        /* Rightward pointing part */
+        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+            .box = {
+                .x = center_x + radius - 4 + i,
+                .y = center_y - radius + 3,
+                .width = 2,
+                .height = 2,
             },
             .color = {
                 .r = icon_color[0],
