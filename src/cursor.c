@@ -163,8 +163,9 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
                     &canvas_x, &canvas_y);
                 view_move_begin(view, canvas_x, canvas_y);
 
-                /* Focus the view being moved */
+                /* Focus and raise the view being moved */
                 view_focus(view);
+                view_raise(view);
                 return;
             } else if (event->button == BTN_RIGHT) {
                 /* Super + Right click: Begin canvas pan */
@@ -176,9 +177,10 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
             }
         }
 
-        /* Regular click - focus the view if we clicked on one */
+        /* Regular click - focus and raise the view if we clicked on one */
         if (view) {
             view_focus(view);
+            view_raise(view);
         }
 
     } else {
@@ -341,7 +343,10 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
         break;
     }
 
-    /* Passthrough mode: update focus and cursor image */
+    /*
+     * Passthrough mode: update pointer focus, cursor image, and keyboard focus.
+     * Implements focus-follows-mouse behaviour.
+     */
     double sx, sy;
     struct wlr_surface *surface = NULL;
     struct infinidesk_view *view = server_view_at(server,
@@ -357,6 +362,15 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
         /* Notify the seat of the pointer entering/moving on the surface */
         wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
         wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
+
+        /*
+         * Focus-follows-mouse: focus the view under cursor.
+         * Skip focus changes during scroll panning to avoid stealing focus
+         * while the user is navigating the canvas.
+         */
+        if (view && !server->scroll_panning) {
+            view_focus(view);
+        }
     } else {
         /* Clear pointer focus if not on a surface */
         wlr_seat_pointer_clear_focus(server->seat);

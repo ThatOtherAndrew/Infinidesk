@@ -80,9 +80,15 @@ struct infinidesk_view *view_create(struct infinidesk_server *server,
 void view_destroy(struct infinidesk_view *view);
 
 /*
- * Focus the view, bringing it to the front and giving it keyboard focus.
+ * Focus the view, giving it keyboard focus and visual focus indication.
+ * Does not raise the view - use view_raise() for that.
  */
 void view_focus(struct infinidesk_view *view);
+
+/*
+ * Raise the view to the top of the stack (front of rendering order).
+ */
+void view_raise(struct infinidesk_view *view);
 
 /*
  * Get the geometry of the view in canvas coordinates.

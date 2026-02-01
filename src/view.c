@@ -183,13 +183,6 @@ void view_focus(struct infinidesk_view *view) {
         }
     }
 
-    /* Move view to the front of the list (top of stack) */
-    wl_list_remove(&view->link);
-    wl_list_insert(&server->views, &view->link);
-
-    /* Raise the scene node to the top */
-    wlr_scene_node_raise_to_top(&view->scene_tree->node);
-
     /* Activate the toplevel and start focus animation */
     wlr_xdg_toplevel_set_activated(view->xdg_toplevel, true);
     view->focused = true;
@@ -204,6 +197,23 @@ void view_focus(struct infinidesk_view *view) {
     }
 
     wlr_log(WLR_DEBUG, "Focused view %p", (void *)view);
+}
+
+void view_raise(struct infinidesk_view *view) {
+    if (!view) {
+        return;
+    }
+
+    struct infinidesk_server *server = view->server;
+
+    /* Move view to the front of the list (top of stack) */
+    wl_list_remove(&view->link);
+    wl_list_insert(&server->views, &view->link);
+
+    /* Raise the scene node to the top */
+    wlr_scene_node_raise_to_top(&view->scene_tree->node);
+
+    wlr_log(WLR_DEBUG, "Raised view %p", (void *)view);
 }
 
 void view_get_geometry(struct infinidesk_view *view,
@@ -334,8 +344,9 @@ static void handle_map(struct wl_listener *listener, void *data) {
     /* Update scene position */
     view_update_scene_position(view);
 
-    /* Focus the new window */
+    /* Focus and raise the new window */
     view_focus(view);
+    view_raise(view);
 }
 
 static void handle_unmap(struct wl_listener *listener, void *data) {
