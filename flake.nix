@@ -37,7 +37,7 @@
 
             meta = with pkgs.lib; {
               description = "Infinite canvas Wayland compositor";
-              homepage = "https://github.com/your-username/infinidesk";
+              homepage = "https://github.com/ThatOtherAndrew/Infinidesk";
               license = licenses.mit;
               platforms = platforms.linux;
               mainProgram = "infinidesk";
