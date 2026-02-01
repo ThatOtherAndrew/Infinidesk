@@ -386,12 +386,19 @@ static void handle_commit(struct wl_listener *listener, void *data) {
     }
 
     /*
-     * Update scene position on every commit to handle geometry changes.
+     * Update scene position when geometry changes.
      * CSD windows (like Chrome/Firefox) may report their shadow offset
-     * after the initial commit, so we need to continuously adjust.
+     * after the initial commit, so we need to adjust when it changes.
      */
     if (view->xdg_toplevel->base->surface->mapped) {
-        view_update_scene_position(view);
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+        if (geo.x != view->last_geo_x || geo.y != view->last_geo_y) {
+            view->last_geo_x = geo.x;
+            view->last_geo_y = geo.y;
+            view_update_scene_position(view);
+        }
     }
 }
 

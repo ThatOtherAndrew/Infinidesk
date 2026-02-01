@@ -39,6 +39,10 @@ struct infinidesk_view {
     double x;
     double y;
 
+    /* Last known geometry offset (for detecting CSD geometry changes) */
+    int last_geo_x;
+    int last_geo_y;
+
     /* Interactive move state */
     bool is_moving;
     double grab_x;  /* Canvas coords where grab started */
