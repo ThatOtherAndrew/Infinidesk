@@ -124,7 +124,7 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass);
 /* 
  * Snaps to a view
  */
-void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view);
+void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int, int);
 
 
 #endif /* INFINIDESK_VIEW_H */
