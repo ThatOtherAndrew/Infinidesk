@@ -239,7 +239,7 @@ static void output_render_custom(struct infinidesk_output *output) {
   drawing_render(&server->drawing, pass, width, height);
 
   /* Render alt-tab switcher overlay */
-  switcher_render(&server->switcher, pass, width, height);
+  switcher_render(&server->switcher, pass, width, height, output_scale);
 
   /* Submit the render pass */
   wlr_render_pass_submit(pass);
