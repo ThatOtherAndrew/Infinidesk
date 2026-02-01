@@ -9,6 +9,8 @@
 #ifndef INFINIDESK_VIEW_H
 #define INFINIDESK_VIEW_H
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_scene.h>
@@ -17,6 +19,9 @@
 /* Forward declaration */
 struct infinidesk_server;
 struct infinidesk_canvas;                                                                                                                                       
+
+/* Animation duration in milliseconds */
+#define VIEW_FOCUS_ANIM_DURATION_MS 200
 
 /*
  * A view represents a toplevel window on the canvas.
@@ -41,6 +46,12 @@ struct infinidesk_view {
     double grab_y;
     double grab_view_x;  /* View position when grab started */
     double grab_view_y;
+
+    /* Focus animation state */
+    bool focused;                   /* Current focus state */
+    double focus_animation;         /* 0.0 = unfocused, 1.0 = focused */
+    uint32_t focus_anim_start_ms;   /* Timestamp when animation started */
+    bool focus_anim_active;         /* Whether animation is in progress */
 
     /* Surface event listeners */
     struct wl_listener map;
@@ -70,9 +81,15 @@ struct infinidesk_view *view_create(struct infinidesk_server *server,
 void view_destroy(struct infinidesk_view *view);
 
 /*
- * Focus the view, bringing it to the front and giving it keyboard focus.
+ * Focus the view, giving it keyboard focus and visual focus indication.
+ * Does not raise the view - use view_raise() for that.
  */
 void view_focus(struct infinidesk_view *view);
+
+/*
+ * Raise the view to the top of the stack (front of rendering order).
+ */
+void view_raise(struct infinidesk_view *view);
 
 /*
  * Get the geometry of the view in canvas coordinates.
@@ -126,5 +143,15 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass);
  */
 void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int, int);
 
+/*
+ * Update focus animation state for all views.
+ * Should be called each frame.
+ */
+void view_update_focus_animations(struct infinidesk_server *server, uint32_t time_ms);
+
+/*
+ * Check if any view has an active animation.
+ */
+bool view_any_animating(struct infinidesk_server *server);
 
 #endif /* INFINIDESK_VIEW_H */

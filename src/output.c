@@ -123,6 +123,14 @@ static void output_render_custom(struct infinidesk_output *output) {
   struct infinidesk_server *server = output->server;
   struct wlr_output *wlr_output = output->wlr_output;
 
+  /* Get current time for animations */
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  uint32_t time_ms = (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+
+  /* Update focus animations */
+  view_update_focus_animations(server, time_ms);
+
   /* Initialise output state */
   struct wlr_output_state state;
   wlr_output_state_init(&state);
