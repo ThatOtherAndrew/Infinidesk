@@ -20,9 +20,6 @@
 
 /* Drawing configuration */
 #define DRAWING_LINE_WIDTH 4.0f
-#define DRAWING_COLOR_R 1.0f
-#define DRAWING_COLOR_G 0.2f
-#define DRAWING_COLOR_B 0.2f
 #define DRAWING_COLOR_A 1.0f
 #define MIN_POINT_DISTANCE 2.0  /* Minimum distance between points in canvas coords */
 
@@ -41,6 +38,14 @@ void drawing_init(struct drawing_layer *drawing, struct infinidesk_server *serve
     drawing->last_canvas_y = 0;
 
     wl_list_init(&drawing->strokes);
+    wl_list_init(&drawing->redo_stack);
+
+    /* Initialize with default red color */
+    drawing->current_color = COLOR_RED;
+
+    /* UI panel initialized on first frame */
+    drawing->ui_panel.hovered_button = UI_BUTTON_NONE;
+    drawing->ui_panel.pressed_button = UI_BUTTON_NONE;
 
     wlr_log(WLR_DEBUG, "Drawing layer initialized");
 }
@@ -71,6 +76,11 @@ void drawing_clear_all(struct drawing_layer *drawing) {
         drawing_stroke_destroy(stroke);
     }
 
+    /* Clear redo stack as well */
+    wl_list_for_each_safe(stroke, tmp_stroke, &drawing->redo_stack, link) {
+        drawing_stroke_destroy(stroke);
+    }
+
     drawing->current_stroke = NULL;
     drawing->is_drawing = false;
 
@@ -94,12 +104,29 @@ void drawing_undo_last(struct drawing_layer *drawing) {
     }
 
     /* Get the last stroke in the list */
-    struct drawing_stroke *last_stroke =
-        wl_container_of(drawing->strokes.prev, last_stroke, link);
+    struct drawing_stroke *stroke =
+        wl_container_of(drawing->strokes.prev, stroke, link);
 
-    drawing_stroke_destroy(last_stroke);
+    /* Move stroke to redo stack instead of destroying */
+    wl_list_remove(&stroke->link);
+    wl_list_insert(drawing->redo_stack.prev, &stroke->link);
 
     wlr_log(WLR_INFO, "Undid last stroke");
+}
+
+void drawing_redo_last(struct drawing_layer *drawing) {
+    if (wl_list_empty(&drawing->redo_stack)) {
+        wlr_log(WLR_DEBUG, "No strokes to redo");
+        return;
+    }
+
+    struct drawing_stroke *stroke =
+        wl_container_of(drawing->redo_stack.prev, stroke, link);
+
+    wl_list_remove(&stroke->link);
+    wl_list_insert(drawing->strokes.prev, &stroke->link);
+
+    wlr_log(WLR_INFO, "Redid stroke");
 }
 
 void drawing_stroke_begin(struct drawing_layer *drawing,
@@ -114,6 +141,9 @@ void drawing_stroke_begin(struct drawing_layer *drawing,
         wlr_log(WLR_ERROR, "Failed to create stroke");
         return;
     }
+
+    /* Save the current color with the stroke */
+    drawing->current_stroke->color = drawing->current_color;
 
     /* Add the first point */
     struct drawing_point *point = drawing_point_create(canvas_x, canvas_y);
@@ -182,6 +212,12 @@ void drawing_stroke_end(struct drawing_layer *drawing) {
         /* Add the completed stroke to the list */
         wl_list_insert(drawing->strokes.prev, &drawing->current_stroke->link);
         wlr_log(WLR_DEBUG, "Finished stroke with %d points", point_count);
+
+        /* Clear redo stack when new stroke is drawn */
+        struct drawing_stroke *redo_stroke, *tmp;
+        wl_list_for_each_safe(redo_stroke, tmp, &drawing->redo_stack, link) {
+            drawing_stroke_destroy(redo_stroke);
+        }
     }
 
     drawing->current_stroke = NULL;
@@ -239,9 +275,9 @@ void drawing_render(struct drawing_layer *drawing,
                                 .height = (int)scaled_width + 1,
                             },
                             .color = {
-                                .r = DRAWING_COLOR_R,
-                                .g = DRAWING_COLOR_G,
-                                .b = DRAWING_COLOR_B,
+                                .r = stroke->color.r,
+                                .g = stroke->color.g,
+                                .b = stroke->color.b,
                                 .a = DRAWING_COLOR_A,
                             },
                         });
@@ -288,9 +324,9 @@ void drawing_render(struct drawing_layer *drawing,
                                 .height = (int)scaled_width + 1,
                             },
                             .color = {
-                                .r = DRAWING_COLOR_R,
-                                .g = DRAWING_COLOR_G,
-                                .b = DRAWING_COLOR_B,
+                                .r = drawing->current_color.r,
+                                .g = drawing->current_color.g,
+                                .b = drawing->current_color.b,
                                 .a = DRAWING_COLOR_A,
                             },
                         });

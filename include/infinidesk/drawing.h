@@ -29,6 +29,7 @@ struct drawing_point {
 struct drawing_stroke {
     struct wl_list points;  /* drawing_point.link */
     struct wl_list link;    /* drawing_layer.strokes */
+    struct drawing_color color; /* Color of this stroke */
 };
 
 /* The drawing layer state */
