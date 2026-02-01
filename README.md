@@ -2,7 +2,7 @@
 
 An infinite spatial canvas, for your desktop.
 
-<!-- TODO: add demo GIF here -->
+![Demo screenshot](.github/assets/screenshot.png)
 
 ## Why Infinidesk?
 
