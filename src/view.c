@@ -564,15 +564,12 @@ static void render_surface_iterator(struct wlr_surface *surface,
     }
 
     /*
-     * Set up source box to use the full texture.
-     * The texture dimensions are logical_size * buffer_scale.
+     * Get the source box from the surface.
+     * This accounts for viewporter cropping - when a client uses wp_viewport
+     * to set a source rectangle, we must use that instead of the full texture.
      */
-    struct wlr_fbox src_box = {
-        .x = 0,
-        .y = 0,
-        .width = logical_width * buffer_scale,
-        .height = logical_height * buffer_scale,
-    };
+    struct wlr_fbox src_box;
+    wlr_surface_get_buffer_source_box(surface, &src_box);
 
     /*
      * Choose filter mode:

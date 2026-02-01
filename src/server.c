@@ -23,6 +23,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/util/log.h>
 
@@ -101,6 +102,10 @@ bool server_init(struct infinidesk_server *server) {
     /* Create fractional scale manager for HiDPI support */
     wlr_fractional_scale_manager_v1_create(server->wl_display, 1);
     wlr_log(WLR_DEBUG, "Fractional scale manager created");
+
+    /* Create viewporter for surface cropping/scaling (required by swww, etc.) */
+    wlr_viewporter_create(server->wl_display);
+    wlr_log(WLR_DEBUG, "Viewporter created");
 
     /* Create the output layout */
     wlr_log(WLR_DEBUG, "Creating output layout");
