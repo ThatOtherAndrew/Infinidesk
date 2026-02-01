@@ -40,6 +40,9 @@
 bool server_init(struct infinidesk_server *server) {
     wlr_log(WLR_DEBUG, "Initialising Wayland display");
 
+    /* Set default output scale (will be overridden by config if loaded) */
+    server->output_scale = 1.0f;
+
     /* Create the Wayland display */
     server->wl_display = wl_display_create();
     if (!server->wl_display) {

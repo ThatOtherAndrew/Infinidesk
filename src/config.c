@@ -28,6 +28,9 @@
 static const char *DEFAULT_CONFIG =
     "# Infinidesk configuration file\n"
     "\n"
+    "# Output scale factor for HiDPI displays (e.g., 1.0, 1.5, 2.0)\n"
+    "scale = 1.0\n"
+    "\n"
     "# Startup commands are executed when the compositor starts.\n"
     "# Each command runs in its own shell process.\n"
     "startup = [\n"
@@ -304,8 +307,38 @@ parse_string:
     return true;
 }
 
+/*
+ * Parse a float value from the config line.
+ */
+static bool parse_float_value(const char *line, const char *key, float *value) {
+    char *p = (char *)line;
+    size_t key_len = strlen(key);
+
+    if (strncmp(p, key, key_len) != 0) {
+        return false;
+    }
+
+    p = skip_whitespace(p + key_len);
+    if (*p != '=') {
+        return false;
+    }
+
+    p = skip_whitespace(p + 1);
+    char *end;
+    float v = strtof(p, &end);
+    if (end == p) {
+        return false;
+    }
+
+    *value = v;
+    return true;
+}
+
 bool config_load(struct infinidesk_config *config) {
     memset(config, 0, sizeof(*config));
+
+    /* Set defaults */
+    config->scale = 1.0f;
 
     char *path = get_config_path();
     if (!path) {
@@ -330,6 +363,28 @@ bool config_load(struct infinidesk_config *config) {
     wlr_log(WLR_INFO, "Loading config from %s", path);
     free(path);
 
+    /* First pass: parse simple key-value pairs */
+    char line[MAX_LINE_LENGTH];
+    while (fgets(line, sizeof(line), f)) {
+        char *p = skip_whitespace(line);
+
+        /* Skip empty lines and comments */
+        if (*p == '\0' || *p == '#') {
+            continue;
+        }
+
+        trim_trailing(p);
+
+        /* Parse scale */
+        float scale_value;
+        if (parse_float_value(p, "scale", &scale_value)) {
+            config->scale = scale_value;
+            wlr_log(WLR_INFO, "Config: scale = %.2f", config->scale);
+        }
+    }
+
+    /* Rewind and parse startup array */
+    rewind(f);
     bool success = parse_startup_array(f, config);
     fclose(f);
 

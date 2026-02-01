@@ -89,17 +89,21 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    /* Load configuration file (before server_start so output scale is set) */
+    struct infinidesk_config config;
+    if (!config_load(&config)) {
+        wlr_log(WLR_ERROR, "Failed to load config, continuing with defaults");
+        /* server.output_scale already set to 1.0f in server_init */
+    } else {
+        server.output_scale = config.scale;
+    }
+
     /* Start the backend */
     if (!server_start(&server)) {
         wlr_log(WLR_ERROR, "Failed to start server");
+        config_free(&config);
         server_finish(&server);
         return EXIT_FAILURE;
-    }
-
-    /* Load configuration file */
-    struct infinidesk_config config;
-    if (!config_load(&config)) {
-        wlr_log(WLR_ERROR, "Failed to load config, continuing without it");
     }
 
     /* Run startup commands from config file */

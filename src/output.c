@@ -93,6 +93,9 @@ void handle_new_output(struct wl_listener *listener, void *data) {
     wlr_output_state_set_mode(&state, mode);
   }
 
+  /* Set output scale for HiDPI displays (from config) */
+  wlr_output_state_set_scale(&state, server->output_scale);
+
   /* Commit the output state */
   wlr_output_commit_state(wlr_output, &state);
   wlr_output_state_finish(&state);
@@ -180,9 +183,9 @@ static void output_render_custom(struct infinidesk_output *output) {
     return;
   }
 
-  /* Get output dimensions */
+  /* Get output dimensions in physical pixels for rendering */
   int width, height;
-  wlr_output_effective_resolution(wlr_output, &width, &height);
+  wlr_output_transformed_resolution(wlr_output, &width, &height);
 
   /* Clear with background colour */
   wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
@@ -213,12 +216,13 @@ static void output_render_custom(struct infinidesk_output *output) {
   render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
 
   /* 3. Render views back-to-front (reverse iteration since list is front-to-back) */
+  float output_scale = wlr_output->scale;
   struct infinidesk_view *view;
   wl_list_for_each_reverse(view, &server->views, link) {
     if (!view->xdg_toplevel->base->surface->mapped) {
       continue;
     }
-    view_render(view, pass);
+    view_render(view, pass, output_scale);
   }
 
   /* 4. Top layer */
@@ -309,6 +313,7 @@ void output_get_effective_resolution(struct infinidesk_output *output,
 struct layer_render_data {
   struct wlr_render_pass *pass;
   int x, y;
+  float output_scale;
 };
 
 /*
@@ -334,8 +339,12 @@ static void render_layer_surface_iterator(struct wlr_surface *surface,
     buffer_scale = 1;
   }
 
-  int dst_x = rdata->x + sx;
-  int dst_y = rdata->y + sy;
+  /* Convert logical coordinates to physical pixels */
+  float scale = rdata->output_scale;
+  int dst_x = (int)((rdata->x + sx) * scale);
+  int dst_y = (int)((rdata->y + sy) * scale);
+  int dst_width = (int)(width * scale);
+  int dst_height = (int)(height * scale);
 
   struct wlr_fbox src_box = {
       .x = 0,
@@ -350,8 +359,8 @@ static void render_layer_surface_iterator(struct wlr_surface *surface,
       .dst_box = {
           .x = dst_x,
           .y = dst_y,
-          .width = width,
-          .height = height,
+          .width = dst_width,
+          .height = dst_height,
       },
       .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
   });
@@ -374,6 +383,7 @@ static void render_layer_surfaces(struct infinidesk_output *output,
         .pass = pass,
         .x = layer_surface->scene_tree->node.x,
         .y = layer_surface->scene_tree->node.y,
+        .output_scale = output->wlr_output->scale,
     };
 
     wlr_layer_surface_v1_for_each_surface(

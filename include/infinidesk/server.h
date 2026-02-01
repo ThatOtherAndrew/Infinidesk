@@ -113,6 +113,9 @@ struct infinidesk_server {
 
     /* Modifier state for input handling */
     bool super_pressed;
+
+    /* Output scale factor (from config) */
+    float output_scale;
 };
 
 /*

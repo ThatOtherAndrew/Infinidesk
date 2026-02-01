@@ -827,7 +827,8 @@ static void render_corner_masks(struct wlr_render_pass *pass,
     }
 }
 
-void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
+void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
+                 float output_scale) {
     struct infinidesk_canvas *canvas = &view->server->canvas;
     struct wlr_xdg_surface *xdg_surface = view->xdg_toplevel->base;
 
@@ -835,21 +836,31 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
         return;
     }
 
-    /* Convert canvas coordinates to screen coordinates */
+    /*
+     * Combined scale: canvas scale (zoom level) * output scale (HiDPI).
+     * All rendering coordinates must be in physical pixels.
+     */
+    double combined_scale = canvas->scale * output_scale;
+
+    /* Convert canvas coordinates to screen coordinates (logical) */
     double screen_x, screen_y;
     canvas_to_screen(canvas, view->x, view->y, &screen_x, &screen_y);
+
+    /* Convert to physical pixels */
+    screen_x *= output_scale;
+    screen_y *= output_scale;
 
     /* Account for XDG surface geometry offset (for CSD windows) */
     struct wlr_box geo;
     wlr_xdg_surface_get_geometry(xdg_surface, &geo);
 
-    /* Calculate scaled dimensions */
-    int scaled_border = (int)round(BORDER_WIDTH * canvas->scale);
-    int scaled_radius = (int)round(CORNER_RADIUS * canvas->scale);
-    int content_x = (int)round(screen_x) - (int)round(geo.x * canvas->scale);
-    int content_y = (int)round(screen_y) - (int)round(geo.y * canvas->scale);
-    int content_width = (int)round(geo.width * canvas->scale);
-    int content_height = (int)round(geo.height * canvas->scale);
+    /* Calculate scaled dimensions (in physical pixels) */
+    int scaled_border = (int)round(BORDER_WIDTH * combined_scale);
+    int scaled_radius = (int)round(CORNER_RADIUS * combined_scale);
+    int content_x = (int)round(screen_x) - (int)round(geo.x * combined_scale);
+    int content_y = (int)round(screen_y) - (int)round(geo.y * combined_scale);
+    int content_width = (int)round(geo.width * combined_scale);
+    int content_height = (int)round(geo.height * combined_scale);
 
     /* Skip rendering if content is too small to be visible */
     if (content_width <= 0 || content_height <= 0) {
@@ -880,7 +891,7 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
     struct render_data data = {
         .pass = pass,
         .view = view,
-        .scale = canvas->scale,
+        .scale = combined_scale,
         .base_x = content_x,
         .base_y = content_y,
         .geo_x = geo.x,

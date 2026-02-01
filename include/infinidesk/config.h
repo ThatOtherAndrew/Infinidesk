@@ -18,6 +18,9 @@ struct infinidesk_config {
     /* Array of startup commands */
     char **startup_commands;
     int startup_command_count;
+
+    /* Output scale factor (HiDPI scaling) */
+    float scale;
 };
 
 /*

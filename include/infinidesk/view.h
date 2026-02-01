@@ -138,8 +138,10 @@ void view_close(struct infinidesk_view *view);
 
 /*
  * Render the view to a render pass with the current canvas transform.
+ * output_scale is the HiDPI scale factor of the output (e.g., 1.0, 1.5, 2.0).
  */
-void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass);
+void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
+                 float output_scale);
 
 /*
  * Update focus animation state for all views.
