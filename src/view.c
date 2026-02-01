@@ -523,27 +523,40 @@ static void handle_map(struct wl_listener *listener, void *data) {
 
     wlr_log(WLR_DEBUG, "View %p mapped", (void *)view);
 
-    /* Position the window at the centre of the current viewport */
+    /*
+     * Position the window at the centre of the usable area.
+     * The usable area accounts for exclusive zones claimed by layer surfaces
+     * (e.g., panels, docks).
+     */
     struct infinidesk_output *output = output_get_primary(server);
     if (output) {
-        int output_width, output_height;
-        output_get_effective_resolution(output, &output_width, &output_height);
+        /* Use the usable area which respects layer shell exclusive zones */
+        struct wlr_box usable = output->usable_area;
 
-        /* Get the centre of the viewport in canvas coordinates */
-        double centre_x, centre_y;
-        canvas_get_viewport_centre(&server->canvas,
-                                   output_width, output_height,
-                                   &centre_x, &centre_y);
+        /*
+         * Calculate the centre of the usable area in screen coordinates,
+         * then convert to canvas coordinates for window placement.
+         */
+        double screen_centre_x = usable.x + usable.width / 2.0;
+        double screen_centre_y = usable.y + usable.height / 2.0;
+
+        /* Convert screen coordinates to canvas coordinates */
+        double canvas_centre_x, canvas_centre_y;
+        screen_to_canvas(&server->canvas,
+                         screen_centre_x, screen_centre_y,
+                         &canvas_centre_x, &canvas_centre_y);
 
         /* Get the window size */
         struct wlr_box geo;
         wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
 
-        /* Position window so its centre is at the viewport centre */
-        view->x = centre_x - geo.width / 2.0;
-        view->y = centre_y - geo.height / 2.0;
+        /* Position window so its centre is at the usable area centre */
+        view->x = canvas_centre_x - geo.width / 2.0;
+        view->y = canvas_centre_y - geo.height / 2.0;
 
-        wlr_log(WLR_DEBUG, "Positioned view at (%.1f, %.1f)", view->x, view->y);
+        wlr_log(WLR_DEBUG, "Positioned view at (%.1f, %.1f) in usable area (%d,%d %dx%d)",
+                view->x, view->y,
+                usable.x, usable.y, usable.width, usable.height);
     } else {
         /* Fallback: position at canvas origin */
         view->x = 0;
@@ -589,10 +602,25 @@ static void handle_commit(struct wl_listener *listener, void *data) {
     (void)data;
     struct infinidesk_view *view = wl_container_of(listener, view, commit);
 
-    /* Update scene position in case geometry changed */
     if (view->xdg_toplevel->base->initial_commit) {
         /* Schedule configure for initial commit */
         wlr_xdg_toplevel_set_size(view->xdg_toplevel, 0, 0);
+    }
+
+    /*
+     * Update scene position when geometry changes.
+     * CSD windows (like Chrome/Firefox) may report their shadow offset
+     * after the initial commit, so we need to adjust when it changes.
+     */
+    if (view->xdg_toplevel->base->surface->mapped) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+        if (geo.x != view->last_geo_x || geo.y != view->last_geo_y) {
+            view->last_geo_x = geo.x;
+            view->last_geo_y = geo.y;
+            view_update_scene_position(view);
+        }
     }
 }
 
@@ -656,6 +684,8 @@ struct render_data {
     double scale;
     int base_x;
     int base_y;
+    int geo_x;  /* Geometry offset to subtract from sx/sy */
+    int geo_y;
 };
 
 /*
@@ -690,9 +720,14 @@ static void render_surface_iterator(struct wlr_surface *surface,
         buffer_scale = 1;
     }
 
-    /* Calculate destination position */
-    int dst_x = data->base_x + (int)round(sx * data->scale);
-    int dst_y = data->base_y + (int)round(sy * data->scale);
+    /*
+     * Calculate destination position.
+     * Subtract the geometry offset because sx/sy from wlr_xdg_surface_for_each_surface
+     * are relative to the buffer origin, but we want positions relative to the
+     * window content origin (which is offset by geo.x/geo.y for CSD windows).
+     */
+    int dst_x = data->base_x + (int)round((sx - data->geo_x) * data->scale);
+    int dst_y = data->base_y + (int)round((sy - data->geo_y) * data->scale);
 
     /* Calculate scaled destination size */
     int dst_width = (int)round(logical_width * data->scale);
@@ -704,15 +739,12 @@ static void render_surface_iterator(struct wlr_surface *surface,
     }
 
     /*
-     * Set up source box to use the full texture.
-     * The texture dimensions are logical_size * buffer_scale.
+     * Get the source box from the surface.
+     * This accounts for viewporter cropping - when a client uses wp_viewport
+     * to set a source rectangle, we must use that instead of the full texture.
      */
-    struct wlr_fbox src_box = {
-        .x = 0,
-        .y = 0,
-        .width = logical_width * buffer_scale,
-        .height = logical_height * buffer_scale,
-    };
+    struct wlr_fbox src_box;
+    wlr_surface_get_buffer_source_box(surface, &src_box);
 
     /*
      * Choose filter mode:
@@ -1001,7 +1033,8 @@ static void render_corner_masks(struct wlr_render_pass *pass,
     }
 }
 
-void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
+void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
+                 float output_scale) {
     struct infinidesk_canvas *canvas = &view->server->canvas;
     struct wlr_xdg_surface *xdg_surface = view->xdg_toplevel->base;
 
@@ -1009,21 +1042,31 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
         return;
     }
 
-    /* Convert canvas coordinates to screen coordinates */
+    /*
+     * Combined scale: canvas scale (zoom level) * output scale (HiDPI).
+     * All rendering coordinates must be in physical pixels.
+     */
+    double combined_scale = canvas->scale * output_scale;
+
+    /* Convert canvas coordinates to screen coordinates (logical) */
     double screen_x, screen_y;
     canvas_to_screen(canvas, view->x, view->y, &screen_x, &screen_y);
+
+    /* Convert to physical pixels */
+    screen_x *= output_scale;
+    screen_y *= output_scale;
 
     /* Account for XDG surface geometry offset (for CSD windows) */
     struct wlr_box geo;
     wlr_xdg_surface_get_geometry(xdg_surface, &geo);
 
-    /* Calculate scaled dimensions */
-    int scaled_border = (int)round(BORDER_WIDTH * canvas->scale);
-    int scaled_radius = (int)round(CORNER_RADIUS * canvas->scale);
-    int content_x = (int)round(screen_x) - (int)round(geo.x * canvas->scale);
-    int content_y = (int)round(screen_y) - (int)round(geo.y * canvas->scale);
-    int content_width = (int)round(geo.width * canvas->scale);
-    int content_height = (int)round(geo.height * canvas->scale);
+    /* Calculate scaled dimensions (in physical pixels) */
+    int scaled_border = (int)round(BORDER_WIDTH * combined_scale);
+    int scaled_radius = (int)round(CORNER_RADIUS * combined_scale);
+    int content_x = (int)round(screen_x) - (int)round(geo.x * combined_scale);
+    int content_y = (int)round(screen_y) - (int)round(geo.y * combined_scale);
+    int content_width = (int)round(geo.width * combined_scale);
+    int content_height = (int)round(geo.height * combined_scale);
 
     /* Skip rendering if content is too small to be visible */
     if (content_width <= 0 || content_height <= 0) {
@@ -1054,9 +1097,11 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
     struct render_data data = {
         .pass = pass,
         .view = view,
-        .scale = canvas->scale,
+        .scale = combined_scale,
         .base_x = content_x,
         .base_y = content_y,
+        .geo_x = geo.x,
+        .geo_y = geo.y,
     };
 
     /*

@@ -74,9 +74,11 @@ void switcher_cancel(struct infinidesk_switcher *switcher);
 /*
  * Render the switcher overlay.
  * Call this from the output render loop when switcher is active.
+ * output_width/height are in physical pixels, output_scale is the HiDPI scale.
  */
 void switcher_render(struct infinidesk_switcher *switcher,
                      struct wlr_render_pass *pass,
-                     int output_width, int output_height);
+                     int output_width, int output_height,
+                     float output_scale);
 
 #endif /* INFINIDESK_SWITCHER_H */

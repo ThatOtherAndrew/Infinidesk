@@ -43,6 +43,10 @@ struct infinidesk_view {
     double x;
     double y;
 
+    /* Last known geometry offset (for detecting CSD geometry changes) */
+    int last_geo_x;
+    int last_geo_y;
+
     /* Interactive move state */
     bool is_moving;
     double grab_x;  /* Canvas coords where grab started */
@@ -138,8 +142,10 @@ void view_close(struct infinidesk_view *view);
 
 /*
  * Render the view to a render pass with the current canvas transform.
+ * output_scale is the HiDPI scale factor of the output (e.g., 1.0, 1.5, 2.0).
  */
-void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass);
+void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
+                 float output_scale);
 
 /* 
  * Snaps to a view

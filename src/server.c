@@ -23,6 +23,8 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_viewporter.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/server.h"
@@ -33,11 +35,15 @@
 #include "infinidesk/input.h"
 #include "infinidesk/cursor.h"
 #include "infinidesk/xdg_shell.h"
+#include "infinidesk/layer_shell.h"
 #include "infinidesk/view.h"
 #include "infinidesk/background.h"
 
 bool server_init(struct infinidesk_server *server) {
     wlr_log(WLR_DEBUG, "Initialising Wayland display");
+
+    /* Set default output scale (will be overridden by config if loaded) */
+    server->output_scale = 1.0f;
 
     /* Create the Wayland display */
     server->wl_display = wl_display_create();
@@ -97,6 +103,10 @@ bool server_init(struct infinidesk_server *server) {
     wlr_fractional_scale_manager_v1_create(server->wl_display, 1);
     wlr_log(WLR_DEBUG, "Fractional scale manager created");
 
+    /* Create viewporter for surface cropping/scaling (required by swww, etc.) */
+    wlr_viewporter_create(server->wl_display);
+    wlr_log(WLR_DEBUG, "Viewporter created");
+
     /* Create the output layout */
     wlr_log(WLR_DEBUG, "Creating output layout");
     server->output_layout = wlr_output_layout_create(server->wl_display);
@@ -104,6 +114,10 @@ bool server_init(struct infinidesk_server *server) {
         wlr_log(WLR_ERROR, "Failed to create output layout");
         goto error_allocator;
     }
+
+    /* Create xdg-output manager for clients that need output info */
+    wlr_xdg_output_manager_v1_create(server->wl_display, server->output_layout);
+    wlr_log(WLR_DEBUG, "XDG output manager created");
 
     /* Create the scene graph */
     wlr_log(WLR_DEBUG, "Creating scene graph");
@@ -160,6 +174,9 @@ bool server_init(struct infinidesk_server *server) {
 
     /* Initialise XDG shell */
     xdg_shell_init(server);
+
+    /* Initialise layer shell */
+    layer_shell_init(server);
 
     /* Initialise background */
     background_init(server);
@@ -295,18 +312,21 @@ struct infinidesk_view *server_view_at(
              *
              * The cursor position relative to where we started rendering
              * (render_x, render_y), divided by scale, gives us the position
-             * in surface-local coordinates (since render starts at surface
-             * origin, i.e., (0,0) of the wl_surface).
+             * relative to the content origin (geometry origin).
              */
-            double surface_local_x = (lx - render_x) / canvas->scale;
-            double surface_local_y = (ly - render_y) / canvas->scale;
+            double content_local_x = (lx - render_x) / canvas->scale;
+            double content_local_y = (ly - render_y) / canvas->scale;
 
             /*
              * Use wlr_xdg_surface_surface_at to find the actual surface
              * (handles subsurfaces, popups, etc.). This function expects
-             * coordinates relative to the xdg_surface, which start at the
-             * wl_surface origin.
+             * coordinates relative to the XDG surface origin (buffer origin),
+             * not the geometry/content origin. For CSD windows, we must add
+             * back the geometry offset.
              */
+            double surface_local_x = content_local_x + geo.x;
+            double surface_local_y = content_local_y + geo.y;
+
             double sub_x, sub_y;
             struct wlr_surface *found_surface = wlr_xdg_surface_surface_at(
                 view->xdg_toplevel->base,
@@ -323,10 +343,11 @@ struct infinidesk_view *server_view_at(
             /*
              * If no surface found at exact point (e.g., in transparent
              * regions of CSD), return the main surface anyway.
+             * Use content-local coordinates for the main surface.
              */
             *surface = view->xdg_toplevel->base->surface;
-            *sx = surface_local_x;
-            *sy = surface_local_y;
+            *sx = content_local_x;
+            *sy = content_local_y;
             return view;
         }
     }
