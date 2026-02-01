@@ -371,12 +371,14 @@ static void render_layer_surface_iterator(struct wlr_surface *surface,
   int dst_width = (int)(width * scale);
   int dst_height = (int)(height * scale);
 
-  struct wlr_fbox src_box = {
-      .x = 0,
-      .y = 0,
-      .width = width * buffer_scale,
-      .height = height * buffer_scale,
-  };
+  /*
+   * Get the source box from the surface.
+   * This accounts for viewporter cropping - when a client (e.g. swww) uses
+   * wp_viewport to set a source rectangle, we must use that instead of the
+   * full texture.
+   */
+  struct wlr_fbox src_box;
+  wlr_surface_get_buffer_source_box(surface, &src_box);
 
   wlr_render_pass_add_texture(rdata->pass, &(struct wlr_render_texture_options){
       .texture = texture,
