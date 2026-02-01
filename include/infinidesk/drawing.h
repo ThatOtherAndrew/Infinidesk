@@ -12,6 +12,8 @@
 #include <stdbool.h>
 #include <wayland-server-core.h>
 
+#include "infinidesk/drawing_ui.h"
+
 /* Forward declaration */
 struct infinidesk_server;
 struct wlr_render_pass;
@@ -40,12 +42,21 @@ struct drawing_layer {
     /* Strokes list (in order of creation) */
     struct wl_list strokes; /* drawing_stroke.link */
 
+    /* Redo stack for undone strokes */
+    struct wl_list redo_stack; /* drawing_stroke.link */
+
     /* Current stroke being drawn */
     struct drawing_stroke *current_stroke;
 
     /* Last cursor position (canvas coordinates) for stroke tracking */
     double last_canvas_x;
     double last_canvas_y;
+
+    /* Current drawing color */
+    struct drawing_color current_color;
+
+    /* UI panel */
+    struct drawing_ui_panel ui_panel;
 };
 
 /*
@@ -72,6 +83,11 @@ void drawing_clear_all(struct drawing_layer *drawing);
  * Undo the last stroke.
  */
 void drawing_undo_last(struct drawing_layer *drawing);
+
+/*
+ * Redo the last undone stroke.
+ */
+void drawing_redo_last(struct drawing_layer *drawing);
 
 /*
  * Begin a new stroke at the given canvas coordinates.

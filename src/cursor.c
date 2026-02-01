@@ -21,6 +21,7 @@
 #include "infinidesk/view.h"
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
+#include "infinidesk/drawing_ui.h"
 
 /* Zoom factor for scroll wheel zoom */
 #define ZOOM_SCROLL_FACTOR 1.1
@@ -131,8 +132,23 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
 
         /* Check if drawing mode is active */
         if (server->drawing.drawing_mode) {
+            /* Check if cursor is over UI panel first */
+            enum drawing_ui_button button =
+                drawing_ui_get_button_at(&server->drawing.ui_panel,
+                                          server->cursor->x, server->cursor->y);
+
+            if (button != UI_BUTTON_NONE) {
+                if (event->button == BTN_LEFT) {
+                    /* Click on UI button */
+                    drawing_ui_handle_click(&server->drawing.ui_panel,
+                                            &server->drawing, button);
+                    wlr_log(WLR_DEBUG, "UI button clicked: %d", button);
+                    return;
+                }
+            }
+
             if (event->button == BTN_LEFT) {
-                /* Left click in drawing mode: Begin drawing stroke */
+                /* Left click in drawing mode (not on UI): Begin drawing stroke */
                 wlr_log(WLR_DEBUG, "Beginning drawing stroke");
                 server->cursor_mode = INFINIDESK_CURSOR_DRAW;
 
@@ -342,6 +358,13 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
     }
 
     /* Passthrough mode: update focus and cursor image */
+
+    /* Update UI hover state if drawing mode is active */
+    if (server->drawing.drawing_mode) {
+        drawing_ui_update_hover(&server->drawing.ui_panel,
+                                server->cursor->x, server->cursor->y);
+    }
+
     double sx, sy;
     struct wlr_surface *surface = NULL;
     struct infinidesk_view *view = server_view_at(server,

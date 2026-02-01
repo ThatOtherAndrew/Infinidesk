@@ -213,6 +213,8 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
         /* Alt + U: Undo last stroke */
         drawing_undo_last(&server->drawing);
         return true;
+        
+    
 
     default:
         return false;

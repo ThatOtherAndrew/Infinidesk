@@ -19,7 +19,7 @@
 #include "infinidesk/canvas.h"
 
 /* Drawing configuration */
-#define DRAWING_LINE_WIDTH 3.0f
+#define DRAWING_LINE_WIDTH 4.0f
 #define DRAWING_COLOR_R 1.0f
 #define DRAWING_COLOR_G 0.2f
 #define DRAWING_COLOR_B 0.2f
