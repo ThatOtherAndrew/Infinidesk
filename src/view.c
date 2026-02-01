@@ -314,27 +314,40 @@ static void handle_map(struct wl_listener *listener, void *data) {
 
     wlr_log(WLR_DEBUG, "View %p mapped", (void *)view);
 
-    /* Position the window at the centre of the current viewport */
+    /*
+     * Position the window at the centre of the usable area.
+     * The usable area accounts for exclusive zones claimed by layer surfaces
+     * (e.g., panels, docks).
+     */
     struct infinidesk_output *output = output_get_primary(server);
     if (output) {
-        int output_width, output_height;
-        output_get_effective_resolution(output, &output_width, &output_height);
+        /* Use the usable area which respects layer shell exclusive zones */
+        struct wlr_box usable = output->usable_area;
 
-        /* Get the centre of the viewport in canvas coordinates */
-        double centre_x, centre_y;
-        canvas_get_viewport_centre(&server->canvas,
-                                   output_width, output_height,
-                                   &centre_x, &centre_y);
+        /*
+         * Calculate the centre of the usable area in screen coordinates,
+         * then convert to canvas coordinates for window placement.
+         */
+        double screen_centre_x = usable.x + usable.width / 2.0;
+        double screen_centre_y = usable.y + usable.height / 2.0;
+
+        /* Convert screen coordinates to canvas coordinates */
+        double canvas_centre_x, canvas_centre_y;
+        screen_to_canvas(&server->canvas,
+                         screen_centre_x, screen_centre_y,
+                         &canvas_centre_x, &canvas_centre_y);
 
         /* Get the window size */
         struct wlr_box geo;
         wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
 
-        /* Position window so its centre is at the viewport centre */
-        view->x = centre_x - geo.width / 2.0;
-        view->y = centre_y - geo.height / 2.0;
+        /* Position window so its centre is at the usable area centre */
+        view->x = canvas_centre_x - geo.width / 2.0;
+        view->y = canvas_centre_y - geo.height / 2.0;
 
-        wlr_log(WLR_DEBUG, "Positioned view at (%.1f, %.1f)", view->x, view->y);
+        wlr_log(WLR_DEBUG, "Positioned view at (%.1f, %.1f) in usable area (%d,%d %dx%d)",
+                view->x, view->y,
+                usable.x, usable.y, usable.width, usable.height);
     } else {
         /* Fallback: position at canvas origin */
         view->x = 0;

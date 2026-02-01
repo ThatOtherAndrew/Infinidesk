@@ -23,6 +23,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/server.h"
@@ -32,6 +33,7 @@
 #include "infinidesk/input.h"
 #include "infinidesk/cursor.h"
 #include "infinidesk/xdg_shell.h"
+#include "infinidesk/layer_shell.h"
 #include "infinidesk/view.h"
 #include "infinidesk/background.h"
 
@@ -104,6 +106,10 @@ bool server_init(struct infinidesk_server *server) {
         goto error_allocator;
     }
 
+    /* Create xdg-output manager for clients that need output info */
+    wlr_xdg_output_manager_v1_create(server->wl_display, server->output_layout);
+    wlr_log(WLR_DEBUG, "XDG output manager created");
+
     /* Create the scene graph */
     wlr_log(WLR_DEBUG, "Creating scene graph");
     server->scene = wlr_scene_create();
@@ -156,6 +162,9 @@ bool server_init(struct infinidesk_server *server) {
 
     /* Initialise XDG shell */
     xdg_shell_init(server);
+
+    /* Initialise layer shell */
+    layer_shell_init(server);
 
     /* Initialise background */
     background_init(server);

@@ -23,6 +23,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
@@ -99,6 +100,10 @@ struct infinidesk_server {
     /* XDG decoration (to disable client-side decorations) */
     struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
     struct wl_listener new_xdg_decoration;
+
+    /* Layer shell */
+    struct wlr_layer_shell_v1 *layer_shell;
+    struct wl_listener new_layer_surface;
 
     /* Infinite canvas */
     struct infinidesk_canvas canvas;

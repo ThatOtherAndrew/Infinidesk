@@ -26,6 +26,15 @@ math = cc.find_library('m', required: false)
 wayland_scanner = find_program('wayland-scanner')
 wayland_protocols_dir = wayland_protos.get_variable('pkgdatadir')
 
+# Find wlr-protocols directory
+wlr_protocols = dependency('wlr-protocols', required: false)
+if wlr_protocols.found()
+  wlr_protocols_dir = wlr_protocols.get_variable('pkgdatadir')
+else
+  # Fallback: try to find it via pkg-config or common locations
+  wlr_protocols_dir = '/usr/share/wlr-protocols'
+endif
+
 # Generate XDG shell protocol headers
 xdg_shell_xml = wayland_protocols_dir / 'stable/xdg-shell/xdg-shell.xml'
 
@@ -33,6 +42,16 @@ xdg_shell_protocol_h = custom_target(
   'xdg-shell-protocol.h',
   input: xdg_shell_xml,
   output: 'xdg-shell-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+
+# Generate wlr-layer-shell protocol header
+wlr_layer_shell_xml = wlr_protocols_dir / 'unstable/wlr-layer-shell-unstable-v1.xml'
+
+wlr_layer_shell_protocol_h = custom_target(
+  'wlr-layer-shell-unstable-v1-protocol.h',
+  input: wlr_layer_shell_xml,
+  output: 'wlr-layer-shell-unstable-v1-protocol.h',
   command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
 )
 
@@ -52,6 +71,7 @@ infinidesk_sources = files(
   'src/cursor.c',
   'src/output.c',
   'src/xdg_shell.c',
+  'src/layer_shell.c',
   'src/background.c',
 )
 
@@ -65,6 +85,7 @@ add_project_arguments(
 executable('infinidesk',
   infinidesk_sources,
   xdg_shell_protocol_h,
+  wlr_layer_shell_protocol_h,
   include_directories: infinidesk_inc,
   dependencies: [
     wlroots,

@@ -30,6 +30,7 @@
               wlroots_0_18
               wayland
               wayland-protocols
+              wlr-protocols
               libxkbcommon
               pixman
             ];

@@ -13,6 +13,7 @@
 
 #include <wlr/backend/wayland.h>
 #include <wlr/render/pass.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
@@ -20,6 +21,7 @@
 
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
+#include "infinidesk/layer_shell.h"
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
 #include "infinidesk/view.h"
@@ -31,6 +33,11 @@ static const float bg_colour[4] = {0.18f, 0.18f, 0.18f, 1.0f};
 static void output_render_custom(struct infinidesk_output *output);
 static void send_frame_done_iterator(struct wlr_surface *surface, int sx,
                                      int sy, void *data);
+static void render_layer_surfaces(struct infinidesk_output *output,
+                                  struct wlr_render_pass *pass,
+                                  enum zwlr_layer_shell_v1_layer layer);
+static void send_layer_frame_done(struct infinidesk_output *output,
+                                  struct timespec *now);
 
 void output_init(struct infinidesk_server *server) {
   server->new_output.notify = handle_new_output;
@@ -54,6 +61,11 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 
   output->server = server;
   output->wlr_output = wlr_output;
+
+  /* Initialise layer surface lists */
+  for (int i = 0; i < LAYER_SHELL_LAYER_COUNT; i++) {
+    wl_list_init(&output->layer_surfaces[i]);
+  }
 
   /* Set up event listeners */
   output->frame.notify = output_handle_frame;
@@ -93,6 +105,30 @@ void handle_new_output(struct wl_listener *listener, void *data) {
   output->scene_output = wlr_scene_output_create(server->scene, wlr_output);
   wlr_scene_output_layout_add_output(server->scene_output_layout, l_output,
                                      output->scene_output);
+
+  /*
+   * Create scene trees for layer shell surfaces.
+   * These are children of the main scene tree, ordered by z-level:
+   *   background -> bottom -> (views) -> top -> overlay
+   *
+   * Note: Views are rendered via custom rendering, not the scene graph,
+   * but layer surfaces use scene trees for automatic positioning.
+   */
+  output->layer_trees[ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND] =
+      wlr_scene_tree_create(&server->scene->tree);
+  output->layer_trees[ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM] =
+      wlr_scene_tree_create(&server->scene->tree);
+  output->layer_trees[ZWLR_LAYER_SHELL_V1_LAYER_TOP] =
+      wlr_scene_tree_create(&server->scene->tree);
+  output->layer_trees[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY] =
+      wlr_scene_tree_create(&server->scene->tree);
+
+  /* Initialise usable area to full output */
+  output->usable_area.x = 0;
+  output->usable_area.y = 0;
+  wlr_output_effective_resolution(wlr_output,
+                                  &output->usable_area.width,
+                                  &output->usable_area.height);
 
   /* Add to server's output list */
   wl_list_insert(&server->outputs, &output->link);
@@ -160,8 +196,23 @@ static void output_render_custom(struct infinidesk_output *output) {
                                          },
                                  });
 
-  /* Render views back-to-front (reverse iteration since list is front-to-back)
+  /*
+   * Render in z-order:
+   * 1. Background layer surfaces (wallpapers)
+   * 2. Bottom layer surfaces (desktop widgets)
+   * 3. Views (windows) with canvas transform
+   * 4. Top layer surfaces (panels, docks)
+   * 5. Overlay layer surfaces (lock screens, notifications)
+   * 6. Drawing layer (user annotations)
    */
+
+  /* 1. Background layer */
+  render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
+
+  /* 2. Bottom layer */
+  render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
+
+  /* 3. Render views back-to-front (reverse iteration since list is front-to-back) */
   struct infinidesk_view *view;
   wl_list_for_each_reverse(view, &server->views, link) {
     if (!view->xdg_toplevel->base->surface->mapped) {
@@ -170,7 +221,13 @@ static void output_render_custom(struct infinidesk_output *output) {
     view_render(view, pass);
   }
 
-  /* Render drawing layer on top of everything */
+  /* 4. Top layer */
+  render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+
+  /* 5. Overlay layer */
+  render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+
+  /* 6. Render drawing layer on top of everything */
   drawing_render(&server->drawing, pass, width, height);
 
   /* Submit the render pass */
@@ -186,12 +243,16 @@ static void output_render_custom(struct infinidesk_output *output) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
 
+  /* Send frame done to views */
   wl_list_for_each(view, &server->views, link) {
     if (view->xdg_toplevel->base->surface->mapped) {
       wlr_xdg_surface_for_each_surface(view->xdg_toplevel->base,
                                        send_frame_done_iterator, &now);
     }
   }
+
+  /* Send frame done to layer surfaces */
+  send_layer_frame_done(output, &now);
 }
 
 /* Iterator to send frame_done to each surface */
@@ -240,4 +301,102 @@ struct infinidesk_output *output_get_primary(struct infinidesk_server *server) {
 void output_get_effective_resolution(struct infinidesk_output *output,
                                      int *width, int *height) {
   wlr_output_effective_resolution(output->wlr_output, width, height);
+}
+
+/*
+ * Render data for layer surface iteration.
+ */
+struct layer_render_data {
+  struct wlr_render_pass *pass;
+  int x, y;
+};
+
+/*
+ * Iterator callback for rendering layer surface textures.
+ */
+static void render_layer_surface_iterator(struct wlr_surface *surface,
+                                          int sx, int sy, void *data) {
+  struct layer_render_data *rdata = data;
+
+  struct wlr_texture *texture = wlr_surface_get_texture(surface);
+  if (!texture) {
+    return;
+  }
+
+  int width = surface->current.width;
+  int height = surface->current.height;
+  int buffer_scale = surface->current.scale;
+
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  if (buffer_scale <= 0) {
+    buffer_scale = 1;
+  }
+
+  int dst_x = rdata->x + sx;
+  int dst_y = rdata->y + sy;
+
+  struct wlr_fbox src_box = {
+      .x = 0,
+      .y = 0,
+      .width = width * buffer_scale,
+      .height = height * buffer_scale,
+  };
+
+  wlr_render_pass_add_texture(rdata->pass, &(struct wlr_render_texture_options){
+      .texture = texture,
+      .src_box = src_box,
+      .dst_box = {
+          .x = dst_x,
+          .y = dst_y,
+          .width = width,
+          .height = height,
+      },
+      .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+  });
+}
+
+/*
+ * Render all layer surfaces in a given layer.
+ * Layer surfaces are rendered at fixed screen positions (no canvas transform).
+ */
+static void render_layer_surfaces(struct infinidesk_output *output,
+                                  struct wlr_render_pass *pass,
+                                  enum zwlr_layer_shell_v1_layer layer) {
+  struct infinidesk_layer_surface *layer_surface;
+  wl_list_for_each(layer_surface, &output->layer_surfaces[layer], link) {
+    if (!layer_surface->layer_surface->surface->mapped) {
+      continue;
+    }
+
+    struct layer_render_data rdata = {
+        .pass = pass,
+        .x = layer_surface->scene_tree->node.x,
+        .y = layer_surface->scene_tree->node.y,
+    };
+
+    wlr_layer_surface_v1_for_each_surface(
+        layer_surface->layer_surface,
+        render_layer_surface_iterator,
+        &rdata);
+  }
+}
+
+/*
+ * Send frame done to all layer surfaces on an output.
+ */
+static void send_layer_frame_done(struct infinidesk_output *output,
+                                  struct timespec *now) {
+  for (int layer = 0; layer < LAYER_SHELL_LAYER_COUNT; layer++) {
+    struct infinidesk_layer_surface *layer_surface;
+    wl_list_for_each(layer_surface, &output->layer_surfaces[layer], link) {
+      if (layer_surface->layer_surface->surface->mapped) {
+        wlr_layer_surface_v1_for_each_surface(
+            layer_surface->layer_surface,
+            send_frame_done_iterator,
+            now);
+      }
+    }
+  }
 }
