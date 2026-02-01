@@ -12,16 +12,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
-#include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/types/wlr_scene.h>
 #include <wlr/render/pass.h>
+#include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_xdg_shell.h>
 
 /* Forward declaration */
 struct infinidesk_server;
-struct infinidesk_canvas;                                                                                                                                       
+struct infinidesk_canvas;
 
 /* Animation duration in milliseconds */
 #define VIEW_FOCUS_ANIM_DURATION_MS 200
+#define VIEW_MAP_ANIM_DURATION_MS 200
 
 /*
  * A view represents a toplevel window on the canvas.
@@ -30,49 +31,55 @@ struct infinidesk_canvas;
  * transformed to screen coordinates based on the current viewport.
  */
 struct infinidesk_view {
-    struct wl_list link;  /* infinidesk_server.views */
-    struct infinidesk_server *server;
+  struct wl_list link; /* infinidesk_server.views */
+  struct infinidesk_server *server;
 
-    struct wlr_xdg_toplevel *xdg_toplevel;
-    struct wlr_scene_tree *scene_tree;
+  struct wlr_xdg_toplevel *xdg_toplevel;
+  struct wlr_scene_tree *scene_tree;
 
-    /* Unique view identifier for alt-tab matching */
-    uint32_t id;
+  /* Unique view identifier for alt-tab matching */
+  uint32_t id;
 
-    /* Position in canvas coordinates */
-    double x;
-    double y;
+  /* Position in canvas coordinates */
+  double x;
+  double y;
 
-    /* Last known geometry offset (for detecting CSD geometry changes) */
-    int last_geo_x;
-    int last_geo_y;
+  /* Last known geometry offset (for detecting CSD geometry changes) */
+  int last_geo_x;
+  int last_geo_y;
 
-    /* Interactive move state */
-    bool is_moving;
-    double grab_x;  /* Canvas coords where grab started */
-    double grab_y;
-    double grab_view_x;  /* View position when grab started */
-    double grab_view_y;
+  /* Interactive move state */
+  bool is_moving;
+  double grab_x; /* Canvas coords where grab started */
+  double grab_y;
+  double grab_view_x; /* View position when grab started */
+  double grab_view_y;
 
-    /* Focus animation state */
-    bool focused;                   /* Current focus state */
-    double focus_animation;         /* 0.0 = unfocused, 1.0 = focused */
-    uint32_t focus_anim_start_ms;   /* Timestamp when animation started */
-    bool focus_anim_active;         /* Whether animation is in progress */
+  /* Focus animation state */
+  bool focused;                 /* Current focus state */
+  double focus_animation;       /* 0.0 = unfocused, 1.0 = focused */
+  uint32_t focus_anim_start_ms; /* Timestamp when animation started */
+  bool focus_anim_active;       /* Whether animation is in progress */
 
-    /* Surface event listeners */
-    struct wl_listener map;
-    struct wl_listener unmap;
-    struct wl_listener destroy;
-    struct wl_listener commit;
+  /* Map/unmap animation state */
+  double map_animation;       /* 0.0 = hidden, 1.0 = fully visible */
+  uint32_t map_anim_start_ms; /* Timestamp when animation started */
+  bool is_animating_out; /* Keep rendering after unmap until animation completes
+                          */
 
-    /* Toplevel event listeners */
-    struct wl_listener request_move;
-    struct wl_listener request_resize;
-    struct wl_listener request_maximise;
-    struct wl_listener request_fullscreen;
-    struct wl_listener set_title;
-    struct wl_listener set_app_id;
+  /* Surface event listeners */
+  struct wl_listener map;
+  struct wl_listener unmap;
+  struct wl_listener destroy;
+  struct wl_listener commit;
+
+  /* Toplevel event listeners */
+  struct wl_listener request_move;
+  struct wl_listener request_resize;
+  struct wl_listener request_maximise;
+  struct wl_listener request_fullscreen;
+  struct wl_listener set_title;
+  struct wl_listener set_app_id;
 };
 
 /*
@@ -101,8 +108,7 @@ void view_raise(struct infinidesk_view *view);
 /*
  * Get the geometry of the view in canvas coordinates.
  */
-void view_get_geometry(struct infinidesk_view *view,
-                       double *x, double *y,
+void view_get_geometry(struct infinidesk_view *view, double *x, double *y,
                        int *width, int *height);
 
 /*
@@ -120,15 +126,15 @@ void view_update_scene_position(struct infinidesk_view *view);
  * Begin an interactive move operation.
  * cursor_x/cursor_y are in canvas coordinates.
  */
-void view_move_begin(struct infinidesk_view *view,
-                     double cursor_x, double cursor_y);
+void view_move_begin(struct infinidesk_view *view, double cursor_x,
+                     double cursor_y);
 
 /*
  * Update view position during an interactive move.
  * cursor_x/cursor_y are in canvas coordinates.
  */
-void view_move_update(struct infinidesk_view *view,
-                      double cursor_x, double cursor_y);
+void view_move_update(struct infinidesk_view *view, double cursor_x,
+                      double cursor_y);
 
 /*
  * End the interactive move operation.
@@ -147,16 +153,18 @@ void view_close(struct infinidesk_view *view);
 void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
                  float output_scale);
 
-/* 
+/*
  * Snaps to a view
  */
-void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view, int, int);
+void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view,
+               int, int);
 
 /*
  * Update focus animation state for all views.
  * Should be called each frame.
  */
-void view_update_focus_animations(struct infinidesk_server *server, uint32_t time_ms);
+void view_update_focus_animations(struct infinidesk_server *server,
+                                  uint32_t time_ms);
 
 /*
  * Check if any view has an active animation.
