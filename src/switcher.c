@@ -275,7 +275,7 @@ static void render_texture(struct infinidesk_switcher *switcher,
     pango_layout_set_text(layout, text, -1);
 
     cairo_move_to(cr, SWITCHER_PADDING,
-                  item_y + (SWITCHER_ITEM_HEIGHT - 20) / 2);
+                  item_y + (SWITCHER_ITEM_HEIGHT - 20) / 2.0);
     pango_cairo_show_layout(cr, layout);
 
     item_y += SWITCHER_ITEM_HEIGHT;
