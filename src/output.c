@@ -21,6 +21,7 @@
 
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
+#include "infinidesk/drawing_ui.h"
 #include "infinidesk/layer_shell.h"
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
@@ -150,6 +151,17 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 void output_handle_frame(struct wl_listener *listener, void *data) {
   (void)data;
   struct infinidesk_output *output = wl_container_of(listener, output, frame);
+  struct infinidesk_server *server = output->server;
+
+  /* Initialize UI panel on first frame if needed */
+  static bool ui_initialized = false;
+  if (!ui_initialized) {
+    int width, height;
+    wlr_output_effective_resolution(output->wlr_output, &width, &height);
+    drawing_ui_init(&server->drawing.ui_panel, width, height);
+    ui_initialized = true;
+    wlr_log(WLR_DEBUG, "Drawing UI panel initialized");
+  }
 
   /* Use custom rendering pipeline */
   output_render_custom(output);
@@ -236,7 +248,13 @@ static void output_render_custom(struct infinidesk_output *output) {
   render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 
   /* 6. Render drawing layer on top of everything */
-  drawing_render(&server->drawing, pass, width, height);
+  drawing_render(&server->drawing, pass, width, height, output_scale);
+
+  /* Render UI panel if drawing mode is active */
+  if (server->drawing.drawing_mode) {
+    drawing_ui_render(&server->drawing.ui_panel, &server->drawing,
+                      pass, width, height, output_scale);
+  }
 
   /* Render alt-tab switcher overlay */
   switcher_render(&server->switcher, pass, width, height, output_scale);

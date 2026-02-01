@@ -12,6 +12,8 @@
 #include <stdbool.h>
 #include <wayland-server-core.h>
 
+#include "infinidesk/drawing_ui.h"
+
 /* Forward declaration */
 struct infinidesk_server;
 struct wlr_render_pass;
@@ -27,6 +29,7 @@ struct drawing_point {
 struct drawing_stroke {
     struct wl_list points;  /* drawing_point.link */
     struct wl_list link;    /* drawing_layer.strokes */
+    struct drawing_color color; /* Color of this stroke */
 };
 
 /* The drawing layer state */
@@ -40,12 +43,21 @@ struct drawing_layer {
     /* Strokes list (in order of creation) */
     struct wl_list strokes; /* drawing_stroke.link */
 
+    /* Redo stack for undone strokes */
+    struct wl_list redo_stack; /* drawing_stroke.link */
+
     /* Current stroke being drawn */
     struct drawing_stroke *current_stroke;
 
     /* Last cursor position (canvas coordinates) for stroke tracking */
     double last_canvas_x;
     double last_canvas_y;
+
+    /* Current drawing color */
+    struct drawing_color current_color;
+
+    /* UI panel */
+    struct drawing_ui_panel ui_panel;
 };
 
 /*
@@ -74,6 +86,11 @@ void drawing_clear_all(struct drawing_layer *drawing);
 void drawing_undo_last(struct drawing_layer *drawing);
 
 /*
+ * Redo the last undone stroke.
+ */
+void drawing_redo_last(struct drawing_layer *drawing);
+
+/*
  * Begin a new stroke at the given canvas coordinates.
  */
 void drawing_stroke_begin(struct drawing_layer *drawing,
@@ -93,9 +110,11 @@ void drawing_stroke_end(struct drawing_layer *drawing);
 /*
  * Render all strokes to the given render pass.
  * This should be called during the output render cycle.
+ * output_scale is the HiDPI scale factor for converting to physical pixels.
  */
 void drawing_render(struct drawing_layer *drawing,
                     struct wlr_render_pass *pass,
-                    int output_width, int output_height);
+                    int output_width, int output_height,
+                    float output_scale);
 
 #endif /* INFINIDESK_DRAWING_H */

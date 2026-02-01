@@ -68,6 +68,7 @@ infinidesk_sources = files(
   'src/config.c',
   'src/canvas.c',
   'src/drawing.c',
+  'src/drawing_ui.c',
   'src/view.c',
   'src/input.c',
   'src/keyboard.c',
