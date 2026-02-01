@@ -380,10 +380,18 @@ static void handle_commit(struct wl_listener *listener, void *data) {
     (void)data;
     struct infinidesk_view *view = wl_container_of(listener, view, commit);
 
-    /* Update scene position in case geometry changed */
     if (view->xdg_toplevel->base->initial_commit) {
         /* Schedule configure for initial commit */
         wlr_xdg_toplevel_set_size(view->xdg_toplevel, 0, 0);
+    }
+
+    /*
+     * Update scene position on every commit to handle geometry changes.
+     * CSD windows (like Chrome/Firefox) may report their shadow offset
+     * after the initial commit, so we need to continuously adjust.
+     */
+    if (view->xdg_toplevel->base->surface->mapped) {
+        view_update_scene_position(view);
     }
 }
 
@@ -447,6 +455,8 @@ struct render_data {
     double scale;
     int base_x;
     int base_y;
+    int geo_x;  /* Geometry offset to subtract from sx/sy */
+    int geo_y;
 };
 
 /*
@@ -481,9 +491,14 @@ static void render_surface_iterator(struct wlr_surface *surface,
         buffer_scale = 1;
     }
 
-    /* Calculate destination position */
-    int dst_x = data->base_x + (int)round(sx * data->scale);
-    int dst_y = data->base_y + (int)round(sy * data->scale);
+    /*
+     * Calculate destination position.
+     * Subtract the geometry offset because sx/sy from wlr_xdg_surface_for_each_surface
+     * are relative to the buffer origin, but we want positions relative to the
+     * window content origin (which is offset by geo.x/geo.y for CSD windows).
+     */
+    int dst_x = data->base_x + (int)round((sx - data->geo_x) * data->scale);
+    int dst_y = data->base_y + (int)round((sy - data->geo_y) * data->scale);
 
     /* Calculate scaled destination size */
     int dst_width = (int)round(logical_width * data->scale);
@@ -848,6 +863,8 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass) {
         .scale = canvas->scale,
         .base_x = content_x,
         .base_y = content_y,
+        .geo_x = geo.x,
+        .geo_y = geo.y,
     };
 
     /*

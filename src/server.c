@@ -288,18 +288,21 @@ struct infinidesk_view *server_view_at(
              *
              * The cursor position relative to where we started rendering
              * (render_x, render_y), divided by scale, gives us the position
-             * in surface-local coordinates (since render starts at surface
-             * origin, i.e., (0,0) of the wl_surface).
+             * relative to the content origin (geometry origin).
              */
-            double surface_local_x = (lx - render_x) / canvas->scale;
-            double surface_local_y = (ly - render_y) / canvas->scale;
+            double content_local_x = (lx - render_x) / canvas->scale;
+            double content_local_y = (ly - render_y) / canvas->scale;
 
             /*
              * Use wlr_xdg_surface_surface_at to find the actual surface
              * (handles subsurfaces, popups, etc.). This function expects
-             * coordinates relative to the xdg_surface, which start at the
-             * wl_surface origin.
+             * coordinates relative to the XDG surface origin (buffer origin),
+             * not the geometry/content origin. For CSD windows, we must add
+             * back the geometry offset.
              */
+            double surface_local_x = content_local_x + geo.x;
+            double surface_local_y = content_local_y + geo.y;
+
             double sub_x, sub_y;
             struct wlr_surface *found_surface = wlr_xdg_surface_surface_at(
                 view->xdg_toplevel->base,
@@ -316,10 +319,11 @@ struct infinidesk_view *server_view_at(
             /*
              * If no surface found at exact point (e.g., in transparent
              * regions of CSD), return the main surface anyway.
+             * Use content-local coordinates for the main surface.
              */
             *surface = view->xdg_toplevel->base->surface;
-            *sx = surface_local_x;
-            *sy = surface_local_y;
+            *sx = content_local_x;
+            *sy = content_local_y;
             return view;
         }
     }
