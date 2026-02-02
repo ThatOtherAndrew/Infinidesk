@@ -461,8 +461,48 @@ void views_gather(struct infinidesk_server *server, double minimum_gap) {
         view_update_scene_position(view);
     }
 
-    wlr_log(WLR_DEBUG, "Gathered %d views towards centroid (%.1f, %.1f) with min gap %.1f",
-            count, centroid_x, centroid_y, minimum_gap);
+    /*
+     * Recalculate the centroid after gathering (it may have shifted slightly
+     * due to minimum distance clamping).
+     */
+    double new_centroid_x = 0.0, new_centroid_y = 0.0;
+    wl_list_for_each(view, &server->views, link) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+        new_centroid_x += view->x + geo.width / 2.0;
+        new_centroid_y += view->y + geo.height / 2.0;
+    }
+    new_centroid_x /= count;
+    new_centroid_y /= count;
+
+    /*
+     * Animate the viewport to centre on the new centroid.
+     * Use the effective resolution which already accounts for HiDPI scaling
+     * (it returns logical pixels, not physical pixels).
+     */
+    struct infinidesk_canvas *canvas = &server->canvas;
+
+    /* Store current position as animation start */
+    canvas->snap_start_x = canvas->viewport_x;
+    canvas->snap_start_y = canvas->viewport_y;
+
+    /*
+     * Calculate target viewport position so the centroid is at screen centre.
+     * screen_centre = (centroid - viewport) * canvas->scale
+     * We want: screen_width/2 = (centroid_x - viewport_x) * scale
+     * Therefore: viewport_x = centroid_x - (screen_width/2) / scale
+     */
+    canvas->snap_target_x = new_centroid_x - (screen_width / 2.0) / canvas->scale;
+    canvas->snap_target_y = new_centroid_y - (screen_height / 2.0) / canvas->scale;
+
+    /* Start the snap animation */
+    canvas->snap_anim_start_ms = get_time_ms();
+    canvas->snap_anim_active = true;
+
+    wlr_log(WLR_DEBUG, "Gathered %d views towards centroid (%.1f, %.1f) with min gap %.1f, "
+            "panning to (%.1f, %.1f)",
+            count, new_centroid_x, new_centroid_y, minimum_gap,
+            canvas->snap_target_x, canvas->snap_target_y);
 }
 
 /* Event handlers */
