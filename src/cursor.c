@@ -24,7 +24,7 @@
 #include "infinidesk/drawing_ui.h"
 
 /* Zoom factor for scroll wheel zoom */
-#define ZOOM_SCROLL_FACTOR 1.1
+#define ZOOM_SCROLL_FACTOR 1.03
 
 /* Timeout in ms to end scroll-pan gesture after last scroll event */
 #define SCROLL_PAN_TIMEOUT_MS 100
