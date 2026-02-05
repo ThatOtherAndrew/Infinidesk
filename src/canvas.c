@@ -8,8 +8,6 @@
 
 #define _POSIX_C_SOURCE 200809L
 
-#include <math.h>
-
 #include <wlr/util/log.h>
 
 #include "infinidesk/canvas.h"
@@ -23,7 +21,8 @@
 /* Pan sensitivity multiplier for scroll-based panning */
 #define PAN_SENSITIVITY 2.5
 
-void canvas_init(struct infinidesk_canvas *canvas, struct infinidesk_server *server) {
+void canvas_init(struct infinidesk_canvas *canvas,
+                 struct infinidesk_server *server) {
     canvas->server = server;
 
     /* Start with viewport at origin */
@@ -51,40 +50,35 @@ void canvas_init(struct infinidesk_canvas *canvas, struct infinidesk_server *ser
     wlr_log(WLR_DEBUG, "Canvas initialised at origin with scale 1.0");
 }
 
-void canvas_to_screen(struct infinidesk_canvas *canvas,
-                      double canvas_x, double canvas_y,
-                      double *screen_x, double *screen_y)
-{
+void canvas_to_screen(struct infinidesk_canvas *canvas, double canvas_x,
+                      double canvas_y, double *screen_x, double *screen_y) {
     /* screen = (canvas - viewport) * scale */
     *screen_x = (canvas_x - canvas->viewport_x) * canvas->scale;
     *screen_y = (canvas_y - canvas->viewport_y) * canvas->scale;
 }
 
-void screen_to_canvas(struct infinidesk_canvas *canvas,
-                      double screen_x, double screen_y,
-                      double *canvas_x, double *canvas_y)
-{
+void screen_to_canvas(struct infinidesk_canvas *canvas, double screen_x,
+                      double screen_y, double *canvas_x, double *canvas_y) {
     /* canvas = screen / scale + viewport */
     *canvas_x = screen_x / canvas->scale + canvas->viewport_x;
     *canvas_y = screen_y / canvas->scale + canvas->viewport_y;
 }
 
-void canvas_pan_begin(struct infinidesk_canvas *canvas,
-                      double cursor_x, double cursor_y)
-{
+void canvas_pan_begin(struct infinidesk_canvas *canvas, double cursor_x,
+                      double cursor_y) {
     canvas->is_panning = true;
     canvas->pan_start_cursor_x = cursor_x;
     canvas->pan_start_cursor_y = cursor_y;
     canvas->pan_start_viewport_x = canvas->viewport_x;
     canvas->pan_start_viewport_y = canvas->viewport_y;
 
-    wlr_log(WLR_DEBUG, "Pan started at cursor (%.1f, %.1f), viewport (%.1f, %.1f)",
+    wlr_log(WLR_DEBUG,
+            "Pan started at cursor (%.1f, %.1f), viewport (%.1f, %.1f)",
             cursor_x, cursor_y, canvas->viewport_x, canvas->viewport_y);
 }
 
-void canvas_pan_update(struct infinidesk_canvas *canvas,
-                       double cursor_x, double cursor_y)
-{
+void canvas_pan_update(struct infinidesk_canvas *canvas, double cursor_x,
+                       double cursor_y) {
     if (!canvas->is_panning) {
         return;
     }
@@ -110,10 +104,10 @@ void canvas_pan_end(struct infinidesk_canvas *canvas) {
     canvas->is_panning = false;
 }
 
-void canvas_pan_delta(struct infinidesk_canvas *canvas,
-                      double delta_x, double delta_y)
-{
-    /* Move viewport by the delta (in canvas space), with sensitivity multiplier */
+void canvas_pan_delta(struct infinidesk_canvas *canvas, double delta_x,
+                      double delta_y) {
+    /* Move viewport by the delta (in canvas space), with sensitivity multiplier
+     */
     canvas->viewport_x -= (delta_x * PAN_SENSITIVITY) / canvas->scale;
     canvas->viewport_y -= (delta_y * PAN_SENSITIVITY) / canvas->scale;
 
@@ -121,10 +115,8 @@ void canvas_pan_delta(struct infinidesk_canvas *canvas,
     canvas_update_view_positions(canvas);
 }
 
-void canvas_zoom(struct infinidesk_canvas *canvas,
-                 double factor,
-                 double focus_x, double focus_y)
-{
+void canvas_zoom(struct infinidesk_canvas *canvas, double factor,
+                 double focus_x, double focus_y) {
     /* Calculate new scale, clamped to limits */
     double new_scale = canvas->scale * factor;
     if (new_scale < ZOOM_MIN) {
@@ -134,12 +126,13 @@ void canvas_zoom(struct infinidesk_canvas *canvas,
     }
 
     if (new_scale == canvas->scale) {
-        return;  /* No change */
+        return; /* No change */
     }
 
     /* Get the canvas position under the focus point before zoom */
     double canvas_focus_x, canvas_focus_y;
-    screen_to_canvas(canvas, focus_x, focus_y, &canvas_focus_x, &canvas_focus_y);
+    screen_to_canvas(canvas, focus_x, focus_y, &canvas_focus_x,
+                     &canvas_focus_y);
 
     /* Apply the new scale */
     canvas->scale = new_scale;
@@ -158,10 +151,8 @@ void canvas_zoom(struct infinidesk_canvas *canvas,
     canvas_update_view_positions(canvas);
 }
 
-void canvas_set_scale(struct infinidesk_canvas *canvas,
-                      double scale,
-                      double focus_x, double focus_y)
-{
+void canvas_set_scale(struct infinidesk_canvas *canvas, double scale,
+                      double focus_x, double focus_y) {
     double factor = scale / canvas->scale;
     canvas_zoom(canvas, factor, focus_x, focus_y);
 }
@@ -176,14 +167,11 @@ void canvas_update_view_positions(struct infinidesk_canvas *canvas) {
 
 void canvas_get_viewport_centre(struct infinidesk_canvas *canvas,
                                 int output_width, int output_height,
-                                double *centre_x, double *centre_y)
-{
+                                double *centre_x, double *centre_y) {
     /* The centre of the viewport in screen space is (width/2, height/2) */
     /* Convert to canvas space */
-    screen_to_canvas(canvas,
-                     output_width / 2.0,
-                     output_height / 2.0,
-                     centre_x, centre_y);
+    screen_to_canvas(canvas, output_width / 2.0, output_height / 2.0, centre_x,
+                     centre_y);
 }
 
 /* Cubic ease-out: starts fast, decelerates smoothly */
@@ -192,7 +180,8 @@ static double ease_out_cubic(double t) {
     return 1.0 - (inv * inv * inv);
 }
 
-void canvas_update_snap_animation(struct infinidesk_canvas *canvas, uint32_t time_ms) {
+void canvas_update_snap_animation(struct infinidesk_canvas *canvas,
+                                  uint32_t time_ms) {
     if (!canvas->snap_anim_active) {
         return;
     }
@@ -209,9 +198,9 @@ void canvas_update_snap_animation(struct infinidesk_canvas *canvas, uint32_t tim
         /* Apply cubic ease-out */
         double t = ease_out_cubic(progress);
         canvas->viewport_x = canvas->snap_start_x +
-            (canvas->snap_target_x - canvas->snap_start_x) * t;
+                             (canvas->snap_target_x - canvas->snap_start_x) * t;
         canvas->viewport_y = canvas->snap_start_y +
-            (canvas->snap_target_y - canvas->snap_start_y) * t;
+                             (canvas->snap_target_y - canvas->snap_start_y) * t;
     }
 
     canvas_update_view_positions(canvas);

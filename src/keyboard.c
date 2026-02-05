@@ -25,135 +25,136 @@
 
 void keyboard_create(struct infinidesk_server *server,
                      struct wlr_keyboard *wlr_keyboard) {
-  struct infinidesk_keyboard *keyboard = calloc(1, sizeof(*keyboard));
-  if (!keyboard) {
-    wlr_log(WLR_ERROR, "Failed to allocate keyboard");
-    return;
-  }
+    struct infinidesk_keyboard *keyboard = calloc(1, sizeof(*keyboard));
+    if (!keyboard) {
+        wlr_log(WLR_ERROR, "Failed to allocate keyboard");
+        return;
+    }
 
-  keyboard->server = server;
-  keyboard->wlr_keyboard = wlr_keyboard;
+    keyboard->server = server;
+    keyboard->wlr_keyboard = wlr_keyboard;
 
-  /* Set up keyboard with default XKB keymap */
-  struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-  if (!context) {
-    wlr_log(WLR_ERROR, "Failed to create XKB context");
-    free(keyboard);
-    return;
-  }
+    /* Set up keyboard with default XKB keymap */
+    struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    if (!context) {
+        wlr_log(WLR_ERROR, "Failed to create XKB context");
+        free(keyboard);
+        return;
+    }
 
-  struct xkb_keymap *keymap =
-      xkb_keymap_new_from_names(context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
-  if (!keymap) {
-    wlr_log(WLR_ERROR, "Failed to create XKB keymap");
+    struct xkb_keymap *keymap =
+        xkb_keymap_new_from_names(context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    if (!keymap) {
+        wlr_log(WLR_ERROR, "Failed to create XKB keymap");
+        xkb_context_unref(context);
+        free(keyboard);
+        return;
+    }
+
+    wlr_keyboard_set_keymap(wlr_keyboard, keymap);
+    xkb_keymap_unref(keymap);
     xkb_context_unref(context);
-    free(keyboard);
-    return;
-  }
 
-  wlr_keyboard_set_keymap(wlr_keyboard, keymap);
-  xkb_keymap_unref(keymap);
-  xkb_context_unref(context);
+    /* Set up repeat info (rate in Hz, delay in ms) */
+    wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
 
-  /* Set up repeat info (rate in Hz, delay in ms) */
-  wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
+    /* Set up event listeners */
+    keyboard->key.notify = keyboard_handle_key;
+    wl_signal_add(&wlr_keyboard->events.key, &keyboard->key);
 
-  /* Set up event listeners */
-  keyboard->key.notify = keyboard_handle_key;
-  wl_signal_add(&wlr_keyboard->events.key, &keyboard->key);
+    keyboard->modifiers.notify = keyboard_handle_modifiers;
+    wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
 
-  keyboard->modifiers.notify = keyboard_handle_modifiers;
-  wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
+    keyboard->destroy.notify = keyboard_handle_destroy;
+    wl_signal_add(&wlr_keyboard->base.events.destroy, &keyboard->destroy);
 
-  keyboard->destroy.notify = keyboard_handle_destroy;
-  wl_signal_add(&wlr_keyboard->base.events.destroy, &keyboard->destroy);
+    /* Add to server's keyboard list */
+    wl_list_insert(&server->keyboards, &keyboard->link);
 
-  /* Add to server's keyboard list */
-  wl_list_insert(&server->keyboards, &keyboard->link);
+    /* Set the keyboard for the seat */
+    wlr_seat_set_keyboard(server->seat, wlr_keyboard);
 
-  /* Set the keyboard for the seat */
-  wlr_seat_set_keyboard(server->seat, wlr_keyboard);
-
-  wlr_log(WLR_DEBUG, "Keyboard created and configured");
+    wlr_log(WLR_DEBUG, "Keyboard created and configured");
 }
 
 void keyboard_handle_key(struct wl_listener *listener, void *data) {
-  struct infinidesk_keyboard *keyboard =
-      wl_container_of(listener, keyboard, key);
-  struct infinidesk_server *server = keyboard->server;
-  struct wlr_keyboard_key_event *event = data;
+    struct infinidesk_keyboard *keyboard =
+        wl_container_of(listener, keyboard, key);
+    struct infinidesk_server *server = keyboard->server;
+    struct wlr_keyboard_key_event *event = data;
 
-  /* Get the keycode and translate to XKB keysym */
-  uint32_t keycode = event->keycode + 8; /* libinput -> XKB offset */
-  const xkb_keysym_t *syms;
-  int nsyms =
-      xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
+    /* Get the keycode and translate to XKB keysym */
+    uint32_t keycode = event->keycode + 8; /* libinput -> XKB offset */
+    const xkb_keysym_t *syms;
+    int nsyms = xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state,
+                                       keycode, &syms);
 
-  /* Get current modifiers */
-  uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
+    /* Get current modifiers */
+    uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
 
-  /* Track Alt key state (used for canvas operations)
-   * Note: Using Alt instead of Super for better nested compositor support */
-  for (int i = 0; i < nsyms; i++) {
-    if (syms[i] == XKB_KEY_Alt_L || syms[i] == XKB_KEY_Alt_R) {
-      server->super_pressed = (event->state == WL_KEYBOARD_KEY_STATE_PRESSED);
-
-      /* Alt release: commit switcher selection */
-      if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED &&
-          server->switcher.active) {
-        switcher_confirm(&server->switcher);
-      }
-      break;
-    }
-  }
-
-  /* Check for compositor keybindings on key press */
-  bool handled = false;
-  if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+    /* Track Alt key state (used for canvas operations)
+     * Note: Using Alt instead of Super for better nested compositor support */
     for (int i = 0; i < nsyms; i++) {
-      handled = keyboard_handle_keybinding(server, modifiers, syms[i]);
-      if (handled) {
-        break;
-      }
-    }
-  }
+        if (syms[i] == XKB_KEY_Alt_L || syms[i] == XKB_KEY_Alt_R) {
+            server->super_pressed =
+                (event->state == WL_KEYBOARD_KEY_STATE_PRESSED);
 
-  /* If the key wasn't handled by a keybinding, forward it to the client */
-  if (!handled) {
-    wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
-    wlr_seat_keyboard_notify_key(server->seat, event->time_msec, event->keycode,
-                                 event->state);
-  }
+            /* Alt release: commit switcher selection */
+            if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED &&
+                server->switcher.active) {
+                switcher_confirm(&server->switcher);
+            }
+            break;
+        }
+    }
+
+    /* Check for compositor keybindings on key press */
+    bool handled = false;
+    if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        for (int i = 0; i < nsyms; i++) {
+            handled = keyboard_handle_keybinding(server, modifiers, syms[i]);
+            if (handled) {
+                break;
+            }
+        }
+    }
+
+    /* If the key wasn't handled by a keybinding, forward it to the client */
+    if (!handled) {
+        wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
+        wlr_seat_keyboard_notify_key(server->seat, event->time_msec,
+                                     event->keycode, event->state);
+    }
 }
 
 void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
-  (void)data;
-  struct infinidesk_keyboard *keyboard =
-      wl_container_of(listener, keyboard, modifiers);
-  struct infinidesk_server *server = keyboard->server;
+    (void)data;
+    struct infinidesk_keyboard *keyboard =
+        wl_container_of(listener, keyboard, modifiers);
+    struct infinidesk_server *server = keyboard->server;
 
-  /* Send modifiers to the focused client */
-  wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
-  wlr_seat_keyboard_notify_modifiers(server->seat,
-                                     &keyboard->wlr_keyboard->modifiers);
+    /* Send modifiers to the focused client */
+    wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
+    wlr_seat_keyboard_notify_modifiers(server->seat,
+                                       &keyboard->wlr_keyboard->modifiers);
 }
 
 void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
-  (void)data;
-  struct infinidesk_keyboard *keyboard =
-      wl_container_of(listener, keyboard, destroy);
+    (void)data;
+    struct infinidesk_keyboard *keyboard =
+        wl_container_of(listener, keyboard, destroy);
 
-  wlr_log(WLR_DEBUG, "Keyboard destroyed");
+    wlr_log(WLR_DEBUG, "Keyboard destroyed");
 
-  /* Remove listeners */
-  wl_list_remove(&keyboard->key.link);
-  wl_list_remove(&keyboard->modifiers.link);
-  wl_list_remove(&keyboard->destroy.link);
+    /* Remove listeners */
+    wl_list_remove(&keyboard->key.link);
+    wl_list_remove(&keyboard->modifiers.link);
+    wl_list_remove(&keyboard->destroy.link);
 
-  /* Remove from server list */
-  wl_list_remove(&keyboard->link);
+    /* Remove from server list */
+    wl_list_remove(&keyboard->link);
 
-  free(keyboard);
+    free(keyboard);
 }
 
 /*
@@ -161,17 +162,15 @@ void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
  * Uses the Cairo-based switcher overlay.
  */
 static void handle_alt_tab(struct infinidesk_server *server) {
-  if (!server->switcher.active) {
-    switcher_start(&server->switcher);
-  } else {
-    switcher_next(&server->switcher);
-  }
+    if (!server->switcher.active) {
+        switcher_start(&server->switcher);
+    } else {
+        switcher_next(&server->switcher);
+    }
 }
 
 bool keyboard_handle_keybinding(struct infinidesk_server *server,
-                                uint32_t modifiers,
-                                xkb_keysym_t sym)
-{
+                                uint32_t modifiers, xkb_keysym_t sym) {
     /*
      * Compositor keybindings (using Alt for nested compositor compatibility):
      * - Alt + Enter:  Launch terminal (kitty)
@@ -186,75 +185,75 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
      * - Alt + Tab:    Cycle windows (release Alt to confirm)
      */
 
-  /* Check for Alt modifier */
-  if (!(modifiers & WLR_MODIFIER_ALT)) {
-    return false;
-  }
-
-  switch (sym) {
-  case XKB_KEY_Return:
-  case XKB_KEY_KP_Enter:
-    /* Alt + Enter: Launch terminal */
-    wlr_log(WLR_INFO, "Launching terminal");
-    if (fork() == 0) {
-      execl("/bin/sh", "/bin/sh", "-c", "kitty", (char *)NULL);
-      _exit(EXIT_FAILURE);
+    /* Check for Alt modifier */
+    if (!(modifiers & WLR_MODIFIER_ALT)) {
+        return false;
     }
-    return true;
 
-   case XKB_KEY_q:
-   case XKB_KEY_Q:
-    /* Alt + Q: Close focused window */
-    if (!wl_list_empty(&server->views)) {
-        struct infinidesk_view *view =
-            wl_container_of(server->views.next, view, link);
-        wlr_log(WLR_DEBUG, "Closing focused view %p", (void *)view);
-        view_close(view);
-    }
-    return true;
-
-  case XKB_KEY_g:
-  case XKB_KEY_G:
-        /* Alt + G: Gather all windows to center */
-        views_gather(server, 20.0);  /* 20px minimum gap */
+    switch (sym) {
+    case XKB_KEY_Return:
+    case XKB_KEY_KP_Enter:
+        /* Alt + Enter: Launch terminal */
+        wlr_log(WLR_INFO, "Launching terminal");
+        if (fork() == 0) {
+            execl("/bin/sh", "/bin/sh", "-c", "kitty", (char *)NULL);
+            _exit(EXIT_FAILURE);
+        }
         return true;
 
-  case XKB_KEY_Escape:
-    /* Alt + Escape: Exit compositor */
-    wlr_log(WLR_INFO, "Exiting compositor");
-    wl_display_terminate(server->wl_display);
-    return true;
+    case XKB_KEY_q:
+    case XKB_KEY_Q:
+        /* Alt + Q: Close focused window */
+        if (!wl_list_empty(&server->views)) {
+            struct infinidesk_view *view =
+                wl_container_of(server->views.next, view, link);
+            wlr_log(WLR_DEBUG, "Closing focused view %p", (void *)view);
+            view_close(view);
+        }
+        return true;
 
-  case XKB_KEY_d:
-  case XKB_KEY_D:
-    /* Alt + D: Toggle drawing mode */
-    drawing_toggle_mode(&server->drawing);
-    return true;
+    case XKB_KEY_g:
+    case XKB_KEY_G:
+        /* Alt + G: Gather all windows to center */
+        views_gather(server, 20.0); /* 20px minimum gap */
+        return true;
 
-  case XKB_KEY_c:
-  case XKB_KEY_C:
-    /* Alt + C: Clear all drawings */
-    drawing_clear_all(&server->drawing);
-    return true;
+    case XKB_KEY_Escape:
+        /* Alt + Escape: Exit compositor */
+        wlr_log(WLR_INFO, "Exiting compositor");
+        wl_display_terminate(server->wl_display);
+        return true;
 
-  case XKB_KEY_u:
-  case XKB_KEY_U:
-    /* Alt + U: Undo last stroke */
-    drawing_undo_last(&server->drawing);
-    return true;
+    case XKB_KEY_d:
+    case XKB_KEY_D:
+        /* Alt + D: Toggle drawing mode */
+        drawing_toggle_mode(&server->drawing);
+        return true;
 
-  case XKB_KEY_Tab:
-    /* Alt + Tab: Cycle through windows (release Alt to confirm) */
-    handle_alt_tab(server);
-    return true;
+    case XKB_KEY_c:
+    case XKB_KEY_C:
+        /* Alt + C: Clear all drawings */
+        drawing_clear_all(&server->drawing);
+        return true;
 
-  case XKB_KEY_r:
-  case XKB_KEY_R:
-    /* Alt + R: Redo last stroke */
-    drawing_redo_last(&server->drawing);
-    return true;
+    case XKB_KEY_u:
+    case XKB_KEY_U:
+        /* Alt + U: Undo last stroke */
+        drawing_undo_last(&server->drawing);
+        return true;
 
-  default:
-    return false;
-  }
+    case XKB_KEY_Tab:
+        /* Alt + Tab: Cycle through windows (release Alt to confirm) */
+        handle_alt_tab(server);
+        return true;
+
+    case XKB_KEY_r:
+    case XKB_KEY_R:
+        /* Alt + R: Redo last stroke */
+        drawing_redo_last(&server->drawing);
+        return true;
+
+    default:
+        return false;
+    }
 }

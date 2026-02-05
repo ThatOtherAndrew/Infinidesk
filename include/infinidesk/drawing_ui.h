@@ -23,9 +23,9 @@ struct drawing_color {
 };
 
 /* Predefined colors */
-#define COLOR_RED   ((struct drawing_color){1.0f, 0.2f, 0.2f})
+#define COLOR_RED ((struct drawing_color){1.0f, 0.2f, 0.2f})
 #define COLOR_GREEN ((struct drawing_color){0.2f, 1.0f, 0.2f})
-#define COLOR_BLUE  ((struct drawing_color){0.2f, 0.5f, 1.0f})
+#define COLOR_BLUE ((struct drawing_color){0.2f, 0.5f, 1.0f})
 
 /* UI button identifiers */
 enum drawing_ui_button {
@@ -54,7 +54,8 @@ struct drawing_ui_panel {
 /*
  * Initialize the UI panel with screen dimensions.
  */
-void drawing_ui_init(struct drawing_ui_panel *panel, int screen_width, int screen_height);
+void drawing_ui_init(struct drawing_ui_panel *panel, int screen_width,
+                     int screen_height);
 
 /*
  * Render the UI panel.
@@ -62,28 +63,27 @@ void drawing_ui_init(struct drawing_ui_panel *panel, int screen_width, int scree
  */
 void drawing_ui_render(struct drawing_ui_panel *panel,
                        struct drawing_layer *drawing,
-                       struct wlr_render_pass *pass,
-                       int screen_width, int screen_height,
-                       float output_scale);
+                       struct wlr_render_pass *pass, int screen_width,
+                       int screen_height, float output_scale);
 
 /*
  * Get the button at the given screen coordinates.
  * Returns UI_BUTTON_NONE if no button is at that position.
  */
 enum drawing_ui_button drawing_ui_get_button_at(struct drawing_ui_panel *panel,
-                                                  double x, double y);
+                                                double x, double y);
 
 /*
  * Handle a click on a UI button.
  */
 void drawing_ui_handle_click(struct drawing_ui_panel *panel,
-                              struct drawing_layer *drawing,
-                              enum drawing_ui_button button);
+                             struct drawing_layer *drawing,
+                             enum drawing_ui_button button);
 
 /*
  * Update the hover state based on cursor position.
  */
-void drawing_ui_update_hover(struct drawing_ui_panel *panel,
-                              double x, double y);
+void drawing_ui_update_hover(struct drawing_ui_panel *panel, double x,
+                             double y);
 
 #endif /* INFINIDESK_DRAWING_UI_H */

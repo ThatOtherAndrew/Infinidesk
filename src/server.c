@@ -14,30 +14,30 @@
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
-#include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/types/wlr_cursor.h>
-#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
-#include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_viewporter.h>
+#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
-#include "infinidesk/server.h"
-#include "infinidesk/canvas.h"
-#include "infinidesk/drawing.h"
-#include "infinidesk/switcher.h"
-#include "infinidesk/output.h"
-#include "infinidesk/input.h"
-#include "infinidesk/cursor.h"
-#include "infinidesk/xdg_shell.h"
-#include "infinidesk/layer_shell.h"
-#include "infinidesk/view.h"
 #include "infinidesk/background.h"
+#include "infinidesk/canvas.h"
+#include "infinidesk/cursor.h"
+#include "infinidesk/drawing.h"
+#include "infinidesk/input.h"
+#include "infinidesk/layer_shell.h"
+#include "infinidesk/output.h"
+#include "infinidesk/server.h"
+#include "infinidesk/switcher.h"
+#include "infinidesk/view.h"
+#include "infinidesk/xdg_shell.h"
 
 bool server_init(struct infinidesk_server *server) {
     wlr_log(WLR_DEBUG, "Initialising Wayland display");
@@ -72,7 +72,8 @@ bool server_init(struct infinidesk_server *server) {
 
     /* Create the allocator */
     wlr_log(WLR_DEBUG, "Creating allocator");
-    server->allocator = wlr_allocator_autocreate(server->backend, server->renderer);
+    server->allocator =
+        wlr_allocator_autocreate(server->backend, server->renderer);
     if (!server->allocator) {
         wlr_log(WLR_ERROR, "Failed to create wlroots allocator");
         goto error_renderer;
@@ -80,7 +81,8 @@ bool server_init(struct infinidesk_server *server) {
 
     /* Create the compositor and subcompositor */
     wlr_log(WLR_DEBUG, "Creating compositor interfaces");
-    server->compositor = wlr_compositor_create(server->wl_display, 6, server->renderer);
+    server->compositor =
+        wlr_compositor_create(server->wl_display, 6, server->renderer);
     if (!server->compositor) {
         wlr_log(WLR_ERROR, "Failed to create wlr_compositor");
         goto error_allocator;
@@ -93,7 +95,8 @@ bool server_init(struct infinidesk_server *server) {
     }
 
     /* Create data device manager (for clipboard, etc.) */
-    server->data_device_manager = wlr_data_device_manager_create(server->wl_display);
+    server->data_device_manager =
+        wlr_data_device_manager_create(server->wl_display);
     if (!server->data_device_manager) {
         wlr_log(WLR_ERROR, "Failed to create data device manager");
         goto error_allocator;
@@ -103,7 +106,8 @@ bool server_init(struct infinidesk_server *server) {
     wlr_fractional_scale_manager_v1_create(server->wl_display, 1);
     wlr_log(WLR_DEBUG, "Fractional scale manager created");
 
-    /* Create viewporter for surface cropping/scaling (required by swww, etc.) */
+    /* Create viewporter for surface cropping/scaling (required by swww, etc.)
+     */
     wlr_viewporter_create(server->wl_display);
     wlr_log(WLR_DEBUG, "Viewporter created");
 
@@ -134,7 +138,8 @@ bool server_init(struct infinidesk_server *server) {
         goto error_scene;
     }
 
-    /* Create a tree for views within the scene (rendered on top of background) */
+    /* Create a tree for views within the scene (rendered on top of background)
+     */
     server->view_tree = wlr_scene_tree_create(&server->scene->tree);
     if (!server->view_tree) {
         wlr_log(WLR_ERROR, "Failed to create view tree");
@@ -142,8 +147,8 @@ bool server_init(struct infinidesk_server *server) {
     }
 
     /* Attach the scene to the output layout */
-    server->scene_output_layout = wlr_scene_attach_output_layout(
-        server->scene, server->output_layout);
+    server->scene_output_layout =
+        wlr_scene_attach_output_layout(server->scene, server->output_layout);
     if (!server->scene_output_layout) {
         wlr_log(WLR_ERROR, "Failed to attach scene to output layout");
         goto error_scene;
@@ -215,7 +220,8 @@ bool server_start(struct infinidesk_server *server) {
 
     /* Set the WAYLAND_DISPLAY environment variable */
     setenv("WAYLAND_DISPLAY", socket, true);
-    wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s", socket);
+    wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s",
+            socket);
 
     return true;
 }
@@ -247,12 +253,10 @@ void server_finish(struct infinidesk_server *server) {
     wl_display_destroy(server->wl_display);
 }
 
-struct infinidesk_view *server_view_at(
-    struct infinidesk_server *server,
-    double lx, double ly,
-    struct wlr_surface **surface,
-    double *sx, double *sy)
-{
+struct infinidesk_view *server_view_at(struct infinidesk_server *server,
+                                       double lx, double ly,
+                                       struct wlr_surface **surface, double *sx,
+                                       double *sy) {
     /*
      * Custom hit testing that accounts for canvas scale.
      *
@@ -303,9 +307,10 @@ struct infinidesk_view *server_view_at(
         double render_width = geo.width * canvas->scale;
         double render_height = geo.height * canvas->scale;
 
-        /* Check if cursor (in screen coords) is within rendered geometry bounds */
-        if (lx >= render_x && lx < render_x + render_width &&
-            ly >= render_y && ly < render_y + render_height) {
+        /* Check if cursor (in screen coords) is within rendered geometry bounds
+         */
+        if (lx >= render_x && lx < render_x + render_width && ly >= render_y &&
+            ly < render_y + render_height) {
 
             /*
              * Found a view - calculate surface-local coordinates.
@@ -329,8 +334,7 @@ struct infinidesk_view *server_view_at(
 
             double sub_x, sub_y;
             struct wlr_surface *found_surface = wlr_xdg_surface_surface_at(
-                view->xdg_toplevel->base,
-                surface_local_x, surface_local_y,
+                view->xdg_toplevel->base, surface_local_x, surface_local_y,
                 &sub_x, &sub_y);
 
             if (found_surface) {

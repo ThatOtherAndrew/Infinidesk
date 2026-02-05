@@ -22,13 +22,13 @@ struct wlr_render_pass;
 struct drawing_point {
     double x;
     double y;
-    struct wl_list link;  /* drawing_stroke.points */
+    struct wl_list link; /* drawing_stroke.points */
 };
 
 /* A stroke - a continuous line made of multiple points */
 struct drawing_stroke {
-    struct wl_list points;  /* drawing_point.link */
-    struct wl_list link;    /* drawing_layer.strokes */
+    struct wl_list points;      /* drawing_point.link */
+    struct wl_list link;        /* drawing_layer.strokes */
     struct drawing_color color; /* Color of this stroke */
 };
 
@@ -37,8 +37,8 @@ struct drawing_layer {
     struct infinidesk_server *server;
 
     /* Drawing state */
-    bool drawing_mode;      /* Whether drawing mode is active */
-    bool is_drawing;        /* Currently drawing a stroke */
+    bool drawing_mode; /* Whether drawing mode is active */
+    bool is_drawing;   /* Currently drawing a stroke */
 
     /* Strokes list (in order of creation) */
     struct wl_list strokes; /* drawing_stroke.link */
@@ -63,7 +63,8 @@ struct drawing_layer {
 /*
  * Initialize the drawing layer.
  */
-void drawing_init(struct drawing_layer *drawing, struct infinidesk_server *server);
+void drawing_init(struct drawing_layer *drawing,
+                  struct infinidesk_server *server);
 
 /*
  * Clean up the drawing layer.
@@ -93,14 +94,14 @@ void drawing_redo_last(struct drawing_layer *drawing);
 /*
  * Begin a new stroke at the given canvas coordinates.
  */
-void drawing_stroke_begin(struct drawing_layer *drawing,
-                          double canvas_x, double canvas_y);
+void drawing_stroke_begin(struct drawing_layer *drawing, double canvas_x,
+                          double canvas_y);
 
 /*
  * Add a point to the current stroke.
  */
-void drawing_stroke_add_point(struct drawing_layer *drawing,
-                              double canvas_x, double canvas_y);
+void drawing_stroke_add_point(struct drawing_layer *drawing, double canvas_x,
+                              double canvas_y);
 
 /*
  * End the current stroke.
@@ -112,9 +113,7 @@ void drawing_stroke_end(struct drawing_layer *drawing);
  * This should be called during the output render cycle.
  * output_scale is the HiDPI scale factor for converting to physical pixels.
  */
-void drawing_render(struct drawing_layer *drawing,
-                    struct wlr_render_pass *pass,
-                    int output_width, int output_height,
-                    float output_scale);
+void drawing_render(struct drawing_layer *drawing, struct wlr_render_pass *pass,
+                    int output_width, int output_height, float output_scale);
 
 #endif /* INFINIDESK_DRAWING_H */

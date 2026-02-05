@@ -8,13 +8,13 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
-#include <errno.h>
-#include <ctype.h>
+#include <unistd.h>
 
 #include <wlr/util/log.h>
 
@@ -48,19 +48,21 @@ static bool create_directories(const char *path) {
     char *p = path_copy;
     while (*p) {
         /* Skip leading slashes */
-        while (*p == '/') p++;
+        while (*p == '/')
+            p++;
 
         /* Find the next slash */
         char *slash = strchr(p, '/');
-        if (!slash) break;
+        if (!slash)
+            break;
 
         /* Temporarily terminate at this point */
         *slash = '\0';
 
         /* Create this directory level */
         if (mkdir(path_copy, 0755) != 0 && errno != EEXIST) {
-            wlr_log(WLR_ERROR, "Failed to create directory %s: %s",
-                    path_copy, strerror(errno));
+            wlr_log(WLR_ERROR, "Failed to create directory %s: %s", path_copy,
+                    strerror(errno));
             free(path_copy);
             return false;
         }
@@ -85,7 +87,8 @@ static char *get_config_path(void) {
         return NULL;
     }
 
-    size_t len = strlen(home) + 1 + strlen(CONFIG_DIR) + 1 + strlen(CONFIG_FILE) + 1;
+    size_t len =
+        strlen(home) + 1 + strlen(CONFIG_DIR) + 1 + strlen(CONFIG_FILE) + 1;
     char *path = malloc(len);
     if (!path) {
         return NULL;
@@ -112,8 +115,8 @@ static bool ensure_config_file(const char *path) {
     /* Create the file with default content */
     FILE *f = fopen(path, "w");
     if (!f) {
-        wlr_log(WLR_ERROR, "Failed to create config file %s: %s",
-                path, strerror(errno));
+        wlr_log(WLR_ERROR, "Failed to create config file %s: %s", path,
+                strerror(errno));
         return false;
     }
 
@@ -155,7 +158,7 @@ static char *parse_quoted_string(char **cursor) {
     if (*p != '"') {
         return NULL;
     }
-    p++;  /* Skip opening quote */
+    p++; /* Skip opening quote */
 
     /* Find the closing quote, handling escapes */
     char *start = p;
@@ -165,7 +168,7 @@ static char *parse_quoted_string(char **cursor) {
     while (*p && *p != '"') {
         if (*p == '\\' && *(p + 1)) {
             has_escapes = true;
-            p += 2;  /* Skip escape sequence */
+            p += 2; /* Skip escape sequence */
             len++;
         } else {
             p++;
@@ -192,11 +195,21 @@ static char *parse_quoted_string(char **cursor) {
             if (*src == '\\' && *(src + 1)) {
                 src++;
                 switch (*src) {
-                case 'n': *dst++ = '\n'; break;
-                case 't': *dst++ = '\t'; break;
-                case '\\': *dst++ = '\\'; break;
-                case '"': *dst++ = '"'; break;
-                default: *dst++ = *src; break;
+                case 'n':
+                    *dst++ = '\n';
+                    break;
+                case 't':
+                    *dst++ = '\t';
+                    break;
+                case '\\':
+                    *dst++ = '\\';
+                    break;
+                case '"':
+                    *dst++ = '"';
+                    break;
+                default:
+                    *dst++ = *src;
+                    break;
                 }
                 src++;
             } else {
@@ -209,7 +222,7 @@ static char *parse_quoted_string(char **cursor) {
         result[len] = '\0';
     }
 
-    *cursor = p + 1;  /* Skip closing quote */
+    *cursor = p + 1; /* Skip closing quote */
     return result;
 }
 
@@ -268,7 +281,7 @@ static bool parse_startup_array(FILE *f, struct infinidesk_config *config) {
             break;
         }
 
-parse_string:
+    parse_string:
         if (*p == '"') {
             char *cmd = parse_quoted_string(&p);
             if (cmd) {
@@ -354,8 +367,8 @@ bool config_load(struct infinidesk_config *config) {
     /* Open and parse the config file */
     FILE *f = fopen(path, "r");
     if (!f) {
-        wlr_log(WLR_ERROR, "Failed to open config file %s: %s",
-                path, strerror(errno));
+        wlr_log(WLR_ERROR, "Failed to open config file %s: %s", path,
+                strerror(errno));
         free(path);
         return false;
     }

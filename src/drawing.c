@@ -8,20 +8,21 @@
 
 #define _POSIX_C_SOURCE 200809L
 
-#include <stdlib.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include <wlr/render/pass.h>
 #include <wlr/util/log.h>
 
+#include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/server.h"
-#include "infinidesk/canvas.h"
 
 /* Drawing configuration */
 #define DRAWING_LINE_WIDTH 4.0f
 #define DRAWING_COLOR_A 1.0f
-#define MIN_POINT_DISTANCE 2.0  /* Minimum distance between points in canvas coords */
+/* Min distance between points in canvas coords */
+#define MIN_POINT_DISTANCE 2.0
 
 /* Forward declarations */
 static struct drawing_stroke *drawing_stroke_create(void);
@@ -29,7 +30,8 @@ static void drawing_stroke_destroy(struct drawing_stroke *stroke);
 static struct drawing_point *drawing_point_create(double x, double y);
 static void drawing_point_destroy(struct drawing_point *point);
 
-void drawing_init(struct drawing_layer *drawing, struct infinidesk_server *server) {
+void drawing_init(struct drawing_layer *drawing,
+                  struct infinidesk_server *server) {
     drawing->server = server;
     drawing->drawing_mode = false;
     drawing->is_drawing = false;
@@ -129,8 +131,8 @@ void drawing_redo_last(struct drawing_layer *drawing) {
     wlr_log(WLR_INFO, "Redid stroke");
 }
 
-void drawing_stroke_begin(struct drawing_layer *drawing,
-                          double canvas_x, double canvas_y) {
+void drawing_stroke_begin(struct drawing_layer *drawing, double canvas_x,
+                          double canvas_y) {
     if (!drawing->drawing_mode) {
         return;
     }
@@ -160,11 +162,12 @@ void drawing_stroke_begin(struct drawing_layer *drawing,
     drawing->last_canvas_x = canvas_x;
     drawing->last_canvas_y = canvas_y;
 
-    wlr_log(WLR_DEBUG, "Started new stroke at (%.2f, %.2f)", canvas_x, canvas_y);
+    wlr_log(WLR_DEBUG, "Started new stroke at (%.2f, %.2f)", canvas_x,
+            canvas_y);
 }
 
-void drawing_stroke_add_point(struct drawing_layer *drawing,
-                              double canvas_x, double canvas_y) {
+void drawing_stroke_add_point(struct drawing_layer *drawing, double canvas_x,
+                              double canvas_y) {
     if (!drawing->is_drawing || !drawing->current_stroke) {
         return;
     }
@@ -224,10 +227,8 @@ void drawing_stroke_end(struct drawing_layer *drawing) {
     drawing->is_drawing = false;
 }
 
-void drawing_render(struct drawing_layer *drawing,
-                    struct wlr_render_pass *pass,
-                    int output_width, int output_height,
-                    float output_scale) {
+void drawing_render(struct drawing_layer *drawing, struct wlr_render_pass *pass,
+                    int output_width, int output_height, float output_scale) {
     (void)output_width;
     (void)output_height;
 
@@ -250,12 +251,10 @@ void drawing_render(struct drawing_layer *drawing,
             if (prev_point) {
                 /* Convert canvas coordinates to logical screen coordinates */
                 double screen_x1, screen_y1, screen_x2, screen_y2;
-                canvas_to_screen(canvas,
-                    prev_point->x, prev_point->y,
-                    &screen_x1, &screen_y1);
-                canvas_to_screen(canvas,
-                    point->x, point->y,
-                    &screen_x2, &screen_y2);
+                canvas_to_screen(canvas, prev_point->x, prev_point->y,
+                                 &screen_x1, &screen_y1);
+                canvas_to_screen(canvas, point->x, point->y, &screen_x2,
+                                 &screen_y2);
 
                 /* Convert to physical pixels */
                 screen_x1 *= output_scale;
@@ -273,7 +272,8 @@ void drawing_render(struct drawing_layer *drawing,
                 if (length > 0.1) {
                     double scaled_width = DRAWING_LINE_WIDTH * combined_scale;
 
-                    /* Draw multiple small rects along the line for smoothness */
+                    /* Draw multiple small rects along the line for smoothness
+                     */
                     int segments = (int)(length / 2.0) + 1;
                     for (int i = 0; i <= segments; i++) {
                         double t = segments > 0 ? (double)i / segments : 0;
@@ -281,20 +281,23 @@ void drawing_render(struct drawing_layer *drawing,
                         double y = screen_y1 + dy * t;
 
                         /* Draw a small rectangle at this point */
-                        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-                            .box = {
-                                .x = (int)(x - scaled_width / 2),
-                                .y = (int)(y - scaled_width / 2),
-                                .width = (int)scaled_width + 1,
-                                .height = (int)scaled_width + 1,
-                            },
-                            .color = {
-                                .r = stroke->color.r,
-                                .g = stroke->color.g,
-                                .b = stroke->color.b,
-                                .a = DRAWING_COLOR_A,
-                            },
-                        });
+                        wlr_render_pass_add_rect(
+                            pass, &(struct wlr_render_rect_options){
+                                      .box =
+                                          {
+                                              .x = (int)(x - scaled_width / 2),
+                                              .y = (int)(y - scaled_width / 2),
+                                              .width = (int)scaled_width + 1,
+                                              .height = (int)scaled_width + 1,
+                                          },
+                                      .color =
+                                          {
+                                              .r = stroke->color.r,
+                                              .g = stroke->color.g,
+                                              .b = stroke->color.b,
+                                              .a = DRAWING_COLOR_A,
+                                          },
+                                  });
                     }
                 }
             }
@@ -310,12 +313,10 @@ void drawing_render(struct drawing_layer *drawing,
         wl_list_for_each(point, &drawing->current_stroke->points, link) {
             if (prev_point) {
                 double screen_x1, screen_y1, screen_x2, screen_y2;
-                canvas_to_screen(canvas,
-                    prev_point->x, prev_point->y,
-                    &screen_x1, &screen_y1);
-                canvas_to_screen(canvas,
-                    point->x, point->y,
-                    &screen_x2, &screen_y2);
+                canvas_to_screen(canvas, prev_point->x, prev_point->y,
+                                 &screen_x1, &screen_y1);
+                canvas_to_screen(canvas, point->x, point->y, &screen_x2,
+                                 &screen_y2);
 
                 /* Convert to physical pixels */
                 screen_x1 *= output_scale;
@@ -336,20 +337,23 @@ void drawing_render(struct drawing_layer *drawing,
                         double x = screen_x1 + dx * t;
                         double y = screen_y1 + dy * t;
 
-                        wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
-                            .box = {
-                                .x = (int)(x - scaled_width / 2),
-                                .y = (int)(y - scaled_width / 2),
-                                .width = (int)scaled_width + 1,
-                                .height = (int)scaled_width + 1,
-                            },
-                            .color = {
-                                .r = drawing->current_color.r,
-                                .g = drawing->current_color.g,
-                                .b = drawing->current_color.b,
-                                .a = DRAWING_COLOR_A,
-                            },
-                        });
+                        wlr_render_pass_add_rect(
+                            pass, &(struct wlr_render_rect_options){
+                                      .box =
+                                          {
+                                              .x = (int)(x - scaled_width / 2),
+                                              .y = (int)(y - scaled_width / 2),
+                                              .width = (int)scaled_width + 1,
+                                              .height = (int)scaled_width + 1,
+                                          },
+                                      .color =
+                                          {
+                                              .r = drawing->current_color.r,
+                                              .g = drawing->current_color.g,
+                                              .b = drawing->current_color.b,
+                                              .a = DRAWING_COLOR_A,
+                                          },
+                                  });
                     }
                 }
             }

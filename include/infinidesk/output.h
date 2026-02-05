@@ -24,13 +24,14 @@ struct infinidesk_server;
  * Output (monitor) wrapper.
  */
 struct infinidesk_output {
-    struct wl_list link;  /* infinidesk_server.outputs */
+    struct wl_list link; /* infinidesk_server.outputs */
     struct infinidesk_server *server;
 
     struct wlr_output *wlr_output;
     struct wlr_scene_output *scene_output;
 
-    /* Layer shell: scene trees for each layer (background, bottom, top, overlay) */
+    /* Layer shell: scene trees for each layer (background, bottom, top,
+     * overlay) */
     struct wlr_scene_tree *layer_trees[LAYER_SHELL_LAYER_COUNT];
 
     /* Layer shell: surfaces on this output, one list per layer */

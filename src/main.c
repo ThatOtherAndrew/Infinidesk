@@ -8,11 +8,11 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <getopt.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <getopt.h>
-#include <signal.h>
 
 #include <wlr/util/log.h>
 
@@ -23,23 +23,23 @@ static struct infinidesk_server server = {0};
 
 static void print_usage(const char *prog_name) {
     fprintf(stderr,
-        "Usage: %s [options]\n"
-        "\n"
-        "Options:\n"
-        "  -s, --startup <cmd>  Command to run at startup\n"
-        "  -d, --debug          Enable debug logging\n"
-        "  -h, --help           Show this help message\n"
-        "\n"
-        "Infinidesk is an infinite canvas Wayland compositor.\n"
-        "\n"
-        "Keybindings:\n"
-        "  Alt + Enter        Launch terminal (kitty)\n"
-        "  Alt + Q            Close focused window\n"
-        "  Alt + Escape       Exit compositor\n"
-        "  Alt + Left-drag    Move window\n"
-        "  Alt + Right-drag   Pan canvas\n"
-        "  Alt + Scroll       Zoom canvas\n",
-        prog_name);
+            "Usage: %s [options]\n"
+            "\n"
+            "Options:\n"
+            "  -s, --startup <cmd>  Command to run at startup\n"
+            "  -d, --debug          Enable debug logging\n"
+            "  -h, --help           Show this help message\n"
+            "\n"
+            "Infinidesk is an infinite canvas Wayland compositor.\n"
+            "\n"
+            "Keybindings:\n"
+            "  Alt + Enter        Launch terminal (kitty)\n"
+            "  Alt + Q            Close focused window\n"
+            "  Alt + Escape       Exit compositor\n"
+            "  Alt + Left-drag    Move window\n"
+            "  Alt + Right-drag   Pan canvas\n"
+            "  Alt + Scroll       Zoom canvas\n",
+            prog_name);
 }
 
 static void handle_signal(int sig) {
@@ -53,10 +53,9 @@ int main(int argc, char *argv[]) {
 
     static struct option long_options[] = {
         {"startup", required_argument, NULL, 's'},
-        {"debug",   no_argument,       NULL, 'd'},
-        {"help",    no_argument,       NULL, 'h'},
-        {NULL,      0,                 NULL, 0}
-    };
+        {"debug", no_argument, NULL, 'd'},
+        {"help", no_argument, NULL, 'h'},
+        {NULL, 0, NULL, 0}};
 
     int opt;
     while ((opt = getopt_long(argc, argv, "s:dh", long_options, NULL)) != -1) {
@@ -111,7 +110,8 @@ int main(int argc, char *argv[]) {
 
     /* Run command-line startup command if specified (in addition to config) */
     if (startup_cmd) {
-        wlr_log(WLR_INFO, "Running command-line startup command: %s", startup_cmd);
+        wlr_log(WLR_INFO, "Running command-line startup command: %s",
+                startup_cmd);
         if (fork() == 0) {
             execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (char *)NULL);
             _exit(EXIT_FAILURE);

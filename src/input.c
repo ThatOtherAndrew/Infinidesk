@@ -8,16 +8,16 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
-#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/input.h"
-#include "infinidesk/server.h"
 #include "infinidesk/keyboard.h"
+#include "infinidesk/server.h"
 
 void input_init(struct infinidesk_server *server) {
     /* Create the seat */
@@ -39,8 +39,8 @@ void handle_new_input(struct wl_listener *listener, void *data) {
         wl_container_of(listener, server, new_input);
     struct wlr_input_device *device = data;
 
-    wlr_log(WLR_INFO, "New input device: %s (type %d)",
-            device->name, device->type);
+    wlr_log(WLR_INFO, "New input device: %s (type %d)", device->name,
+            device->type);
 
     switch (device->type) {
     case WLR_INPUT_DEVICE_KEYBOARD:

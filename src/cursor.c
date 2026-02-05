@@ -11,17 +11,17 @@
 #include <linux/input-event-codes.h>
 
 #include <wlr/types/wlr_cursor.h>
-#include <wlr/types/wlr_xcursor_manager.h>
-#include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
-#include "infinidesk/cursor.h"
-#include "infinidesk/server.h"
-#include "infinidesk/view.h"
 #include "infinidesk/canvas.h"
+#include "infinidesk/cursor.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/drawing_ui.h"
+#include "infinidesk/server.h"
+#include "infinidesk/view.h"
 
 /* Zoom factor for scroll wheel zoom */
 #define ZOOM_SCROLL_FACTOR 1.03
@@ -33,7 +33,7 @@
 static int scroll_pan_timer_callback(void *data) {
     struct infinidesk_server *server = data;
     server->scroll_panning = false;
-    return 0;  /* Don't repeat */
+    return 0; /* Don't repeat */
 }
 
 void cursor_init(struct infinidesk_server *server) {
@@ -94,8 +94,8 @@ void cursor_handle_motion(struct wl_listener *listener, void *data) {
     struct wlr_pointer_motion_event *event = data;
 
     /* Move the cursor */
-    wlr_cursor_move(server->cursor, &event->pointer->base,
-                    event->delta_x, event->delta_y);
+    wlr_cursor_move(server->cursor, &event->pointer->base, event->delta_x,
+                    event->delta_y);
 
     /* Process the motion */
     cursor_process_motion(server, event->time_msec);
@@ -107,8 +107,8 @@ void cursor_handle_motion_absolute(struct wl_listener *listener, void *data) {
     struct wlr_pointer_motion_absolute_event *event = data;
 
     /* Warp to the absolute position */
-    wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
-                             event->x, event->y);
+    wlr_cursor_warp_absolute(server->cursor, &event->pointer->base, event->x,
+                             event->y);
 
     /* Process the motion */
     cursor_process_motion(server, event->time_msec);
@@ -120,22 +120,22 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
     struct wlr_pointer_button_event *event = data;
 
     /* Notify the seat of the button event */
-    wlr_seat_pointer_notify_button(server->seat,
-        event->time_msec, event->button, event->state);
+    wlr_seat_pointer_notify_button(server->seat, event->time_msec,
+                                   event->button, event->state);
 
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         /* Button pressed */
         double sx, sy;
         struct wlr_surface *surface = NULL;
-        struct infinidesk_view *view = server_view_at(server,
-            server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+        struct infinidesk_view *view = server_view_at(
+            server, server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
         /* Check if drawing mode is active */
         if (server->drawing.drawing_mode) {
             /* Check if cursor is over UI panel first */
             enum drawing_ui_button button =
                 drawing_ui_get_button_at(&server->drawing.ui_panel,
-                                          server->cursor->x, server->cursor->y);
+                                         server->cursor->x, server->cursor->y);
 
             if (button != UI_BUTTON_NONE) {
                 if (event->button == BTN_LEFT) {
@@ -148,15 +148,15 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
             }
 
             if (event->button == BTN_LEFT) {
-                /* Left click in drawing mode (not on UI): Begin drawing stroke */
+                /* Left click in drawing mode (not on UI): Begin drawing stroke
+                 */
                 wlr_log(WLR_DEBUG, "Beginning drawing stroke");
                 server->cursor_mode = INFINIDESK_CURSOR_DRAW;
 
                 /* Convert cursor position to canvas coordinates */
                 double canvas_x, canvas_y;
-                screen_to_canvas(&server->canvas,
-                    server->cursor->x, server->cursor->y,
-                    &canvas_x, &canvas_y);
+                screen_to_canvas(&server->canvas, server->cursor->x,
+                                 server->cursor->y, &canvas_x, &canvas_y);
                 drawing_stroke_begin(&server->drawing, canvas_x, canvas_y);
                 return;
             }
@@ -174,9 +174,8 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
 
                 /* Convert cursor position to canvas coordinates */
                 double canvas_x, canvas_y;
-                screen_to_canvas(&server->canvas,
-                    server->cursor->x, server->cursor->y,
-                    &canvas_x, &canvas_y);
+                screen_to_canvas(&server->canvas, server->cursor->x,
+                                 server->cursor->y, &canvas_x, &canvas_y);
                 view_move_begin(view, canvas_x, canvas_y);
 
                 /* Focus and raise the view being moved */
@@ -187,8 +186,8 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
                 /* Super + Right click: Begin canvas pan */
                 wlr_log(WLR_DEBUG, "Beginning canvas pan");
                 server->cursor_mode = INFINIDESK_CURSOR_PAN;
-                canvas_pan_begin(&server->canvas,
-                    server->cursor->x, server->cursor->y);
+                canvas_pan_begin(&server->canvas, server->cursor->x,
+                                 server->cursor->y);
                 return;
             }
         }
@@ -229,10 +228,10 @@ void cursor_handle_axis(struct wl_listener *listener, void *data) {
     /* Alt + Scroll: Zoom canvas */
     if (server->super_pressed) {
         if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-            double factor = (event->delta < 0) ?
-                ZOOM_SCROLL_FACTOR : (1.0 / ZOOM_SCROLL_FACTOR);
-            canvas_zoom(&server->canvas, factor,
-                server->cursor->x, server->cursor->y);
+            double factor = (event->delta < 0) ? ZOOM_SCROLL_FACTOR
+                                               : (1.0 / ZOOM_SCROLL_FACTOR);
+            canvas_zoom(&server->canvas, factor, server->cursor->x,
+                        server->cursor->y);
         }
         /* Ignore horizontal scroll when Alt is held */
         return;
@@ -252,7 +251,7 @@ void cursor_handle_axis(struct wl_listener *listener, void *data) {
         /* Reset the timer on each scroll event */
         if (server->scroll_pan_timer) {
             wl_event_source_timer_update(server->scroll_pan_timer,
-                SCROLL_PAN_TIMEOUT_MS);
+                                         SCROLL_PAN_TIMEOUT_MS);
         }
         return;
     }
@@ -263,13 +262,13 @@ void cursor_handle_axis(struct wl_listener *listener, void *data) {
      */
     double sx, sy;
     struct wlr_surface *surface = NULL;
-    struct infinidesk_view *view = server_view_at(server,
-        server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+    struct infinidesk_view *view = server_view_at(
+        server, server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
     if (view && surface) {
         /* Scroll over a window - pass to client */
-        wlr_seat_pointer_notify_axis(server->seat,
-            event->time_msec, event->orientation, event->delta,
+        wlr_seat_pointer_notify_axis(
+            server->seat, event->time_msec, event->orientation, event->delta,
             event->delta_discrete, event->source, event->relative_direction);
     } else {
         /* Scroll over empty canvas - start pan gesture */
@@ -278,12 +277,12 @@ void cursor_handle_axis(struct wl_listener *listener, void *data) {
         /* Create or reset the timer to end the gesture */
         if (server->scroll_pan_timer) {
             wl_event_source_timer_update(server->scroll_pan_timer,
-                SCROLL_PAN_TIMEOUT_MS);
+                                         SCROLL_PAN_TIMEOUT_MS);
         } else {
             server->scroll_pan_timer = wl_event_loop_add_timer(
                 server->event_loop, scroll_pan_timer_callback, server);
             wl_event_source_timer_update(server->scroll_pan_timer,
-                SCROLL_PAN_TIMEOUT_MS);
+                                         SCROLL_PAN_TIMEOUT_MS);
         }
 
         if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
@@ -314,8 +313,8 @@ void cursor_handle_request_cursor(struct wl_listener *listener, void *data) {
 
     if (focused_client == event->seat_client) {
         /* Set the cursor surface from the client */
-        wlr_cursor_set_surface(server->cursor, event->surface,
-                               event->hotspot_x, event->hotspot_y);
+        wlr_cursor_set_surface(server->cursor, event->surface, event->hotspot_x,
+                               event->hotspot_y);
     }
 }
 
@@ -325,9 +324,8 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
         /* Update the view position during move */
         if (server->grabbed_view) {
             double canvas_x, canvas_y;
-            screen_to_canvas(&server->canvas,
-                server->cursor->x, server->cursor->y,
-                &canvas_x, &canvas_y);
+            screen_to_canvas(&server->canvas, server->cursor->x,
+                             server->cursor->y, &canvas_x, &canvas_y);
             view_move_update(server->grabbed_view, canvas_x, canvas_y);
         }
         return;
@@ -335,17 +333,16 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
 
     case INFINIDESK_CURSOR_PAN: {
         /* Update the viewport during pan */
-        canvas_pan_update(&server->canvas,
-            server->cursor->x, server->cursor->y);
+        canvas_pan_update(&server->canvas, server->cursor->x,
+                          server->cursor->y);
         return;
     }
 
     case INFINIDESK_CURSOR_DRAW: {
         /* Add points to the current stroke */
         double canvas_x, canvas_y;
-        screen_to_canvas(&server->canvas,
-            server->cursor->x, server->cursor->y,
-            &canvas_x, &canvas_y);
+        screen_to_canvas(&server->canvas, server->cursor->x, server->cursor->y,
+                         &canvas_x, &canvas_y);
         drawing_stroke_add_point(&server->drawing, canvas_x, canvas_y);
         return;
     }
@@ -363,8 +360,8 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
 
     /* Update UI hover state if drawing mode is active */
     if (server->drawing.drawing_mode) {
-        drawing_ui_update_hover(&server->drawing.ui_panel,
-                                server->cursor->x, server->cursor->y);
+        drawing_ui_update_hover(&server->drawing.ui_panel, server->cursor->x,
+                                server->cursor->y);
     }
 
     /*
@@ -373,13 +370,13 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
      */
     double sx, sy;
     struct wlr_surface *surface = NULL;
-    struct infinidesk_view *view = server_view_at(server,
-        server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+    struct infinidesk_view *view = server_view_at(
+        server, server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
     if (!view) {
         /* No view under cursor - set default cursor */
-        wlr_cursor_set_xcursor(server->cursor,
-            server->xcursor_manager, "default");
+        wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
+                               "default");
     }
 
     if (surface) {

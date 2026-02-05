@@ -19,7 +19,7 @@ struct infinidesk_server;
  * Keyboard device wrapper.
  */
 struct infinidesk_keyboard {
-    struct wl_list link;  /* infinidesk_server.keyboards */
+    struct wl_list link; /* infinidesk_server.keyboards */
     struct infinidesk_server *server;
     struct wlr_keyboard *wlr_keyboard;
 
@@ -55,7 +55,6 @@ void keyboard_handle_destroy(struct wl_listener *listener, void *data);
  * false if it should be forwarded to the client.
  */
 bool keyboard_handle_keybinding(struct infinidesk_server *server,
-                                uint32_t modifiers,
-                                xkb_keysym_t sym);
+                                uint32_t modifiers, xkb_keysym_t sym);
 
 #endif /* INFINIDESK_KEYBOARD_H */

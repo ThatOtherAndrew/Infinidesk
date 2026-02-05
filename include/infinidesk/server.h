@@ -14,16 +14,16 @@
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
-#include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/types/wlr_cursor.h>
-#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
-#include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
 
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
@@ -36,11 +36,11 @@ struct infinidesk_keyboard;
 
 /* Cursor interaction modes */
 enum infinidesk_cursor_mode {
-    INFINIDESK_CURSOR_PASSTHROUGH,  /* Normal - events go to clients */
-    INFINIDESK_CURSOR_MOVE,         /* Moving a window (Super + drag) */
-    INFINIDESK_CURSOR_PAN,          /* Panning the canvas */
-    INFINIDESK_CURSOR_RESIZE,       /* Resizing a window (future) */
-    INFINIDESK_CURSOR_DRAW,         /* Drawing on the canvas */
+    INFINIDESK_CURSOR_PASSTHROUGH, /* Normal - events go to clients */
+    INFINIDESK_CURSOR_MOVE,        /* Moving a window (Super + drag) */
+    INFINIDESK_CURSOR_PAN,         /* Panning the canvas */
+    INFINIDESK_CURSOR_RESIZE,      /* Resizing a window (future) */
+    INFINIDESK_CURSOR_DRAW,        /* Drawing on the canvas */
 };
 
 /* Main server state */
@@ -59,18 +59,18 @@ struct infinidesk_server {
 
     /* Scene graph */
     struct wlr_scene *scene;
-    struct wlr_scene_tree *background_tree;  /* Tree for background */
-    struct wlr_scene_tree *view_tree;  /* Tree for window views */
+    struct wlr_scene_tree *background_tree; /* Tree for background */
+    struct wlr_scene_tree *view_tree;       /* Tree for window views */
     struct wlr_scene_output_layout *scene_output_layout;
 
     /* Output management */
     struct wlr_output_layout *output_layout;
-    struct wl_list outputs;  /* infinidesk_output.link */
+    struct wl_list outputs; /* infinidesk_output.link */
     struct wl_listener new_output;
 
     /* Input management */
     struct wlr_seat *seat;
-    struct wl_list keyboards;  /* infinidesk_keyboard.link */
+    struct wl_list keyboards; /* infinidesk_keyboard.link */
     struct wl_listener new_input;
     struct wl_listener request_cursor;
     struct wl_listener request_set_selection;
@@ -87,14 +87,16 @@ struct infinidesk_server {
     /* Cursor state */
     enum infinidesk_cursor_mode cursor_mode;
     struct infinidesk_view *grabbed_view;
-    double grab_x, grab_y;  /* Cursor position at grab start */
-    uint32_t resize_edges;  /* For resize operations */
-    bool scroll_panning;    /* Currently scroll-panning (started on empty canvas) */
-    struct wl_event_source *scroll_pan_timer;  /* Timer to end scroll-pan gesture */
+    double grab_x, grab_y; /* Cursor position at grab start */
+    uint32_t resize_edges; /* For resize operations */
+    bool
+        scroll_panning; /* Currently scroll-panning (started on empty canvas) */
+    struct wl_event_source
+        *scroll_pan_timer; /* Timer to end scroll-pan gesture */
 
     /* XDG shell */
     struct wlr_xdg_shell *xdg_shell;
-    struct wl_list views;  /* infinidesk_view.link */
+    struct wl_list views; /* infinidesk_view.link */
     struct wl_listener new_xdg_toplevel;
     struct wl_listener new_xdg_popup;
 
@@ -152,10 +154,9 @@ void server_finish(struct infinidesk_server *server);
  * If surface and sx/sy are provided, they will be set to the
  * specific surface and surface-local coordinates.
  */
-struct infinidesk_view *server_view_at(
-    struct infinidesk_server *server,
-    double lx, double ly,
-    struct wlr_surface **surface,
-    double *sx, double *sy);
+struct infinidesk_view *server_view_at(struct infinidesk_server *server,
+                                       double lx, double ly,
+                                       struct wlr_surface **surface, double *sx,
+                                       double *sy);
 
 #endif /* INFINIDESK_SERVER_H */

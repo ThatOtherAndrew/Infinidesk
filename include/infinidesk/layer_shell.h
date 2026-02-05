@@ -26,7 +26,7 @@ struct infinidesk_output;
  * (background, bottom, top, overlay).
  */
 struct infinidesk_layer_surface {
-    struct wl_list link;  /* infinidesk_output.layer_surfaces[layer] */
+    struct wl_list link; /* infinidesk_output.layer_surfaces[layer] */
     struct infinidesk_server *server;
     struct infinidesk_output *output;
 
@@ -66,17 +66,15 @@ void layer_shell_arrange(struct infinidesk_output *output);
  * Get the usable area of an output after accounting for exclusive zones.
  */
 void layer_shell_get_usable_area(struct infinidesk_output *output,
-                                  struct wlr_box *usable_area);
+                                 struct wlr_box *usable_area);
 
 /*
  * Find a layer surface at the given output-local coordinates.
  * Returns the surface and surface-local coordinates, or NULL if not found.
  * Searches from overlay to background (top to bottom in z-order).
  */
-struct infinidesk_layer_surface *layer_surface_at(
-    struct infinidesk_output *output,
-    double ox, double oy,
-    struct wlr_surface **surface,
-    double *sx, double *sy);
+struct infinidesk_layer_surface *
+layer_surface_at(struct infinidesk_output *output, double ox, double oy,
+                 struct wlr_surface **surface, double *sx, double *sy);
 
 #endif /* INFINIDESK_LAYER_SHELL_H */

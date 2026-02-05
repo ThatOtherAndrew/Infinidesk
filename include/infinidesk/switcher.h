@@ -10,8 +10,8 @@
 #define INFINIDESK_SWITCHER_H
 
 #include <stdbool.h>
-#include <wlr/render/wlr_renderer.h>
 #include <wlr/render/pass.h>
+#include <wlr/render/wlr_renderer.h>
 
 /* Forward declarations */
 struct infinidesk_server;
@@ -77,8 +77,7 @@ void switcher_cancel(struct infinidesk_switcher *switcher);
  * output_width/height are in physical pixels, output_scale is the HiDPI scale.
  */
 void switcher_render(struct infinidesk_switcher *switcher,
-                     struct wlr_render_pass *pass,
-                     int output_width, int output_height,
-                     float output_scale);
+                     struct wlr_render_pass *pass, int output_width,
+                     int output_height, float output_scale);
 
 #endif /* INFINIDESK_SWITCHER_H */
