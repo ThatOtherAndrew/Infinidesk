@@ -1200,6 +1200,57 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
                   border_b, border_a);
 }
 
+void view_render_popups(struct infinidesk_view *view,
+                        struct wlr_render_pass *pass, float output_scale) {
+    struct infinidesk_canvas *canvas = &view->server->canvas;
+    struct wlr_xdg_surface *xdg_surface = view->xdg_toplevel->base;
+
+    if (!xdg_surface->surface->mapped) {
+        return;
+    }
+
+    /*
+     * Use the same scale as the parent view (no animation scaling for popups).
+     * Popups should appear at full opacity immediately.
+     */
+    double combined_scale = canvas->scale * output_scale;
+
+    /* Convert canvas coordinates to screen coordinates (logical) */
+    double screen_x, screen_y;
+    canvas_to_screen(canvas, view->x, view->y, &screen_x, &screen_y);
+
+    /* Convert to physical pixels */
+    screen_x *= output_scale;
+    screen_y *= output_scale;
+
+    /* Account for XDG surface geometry offset (for CSD windows) */
+    struct wlr_box geo;
+    wlr_xdg_surface_get_geometry(xdg_surface, &geo);
+
+    int content_x = (int)round(screen_x) - (int)round(geo.x * combined_scale);
+    int content_y = (int)round(screen_y) - (int)round(geo.y * combined_scale);
+
+    /* Set up render data for popup surfaces */
+    struct render_data data = {
+        .pass = pass,
+        .view = view,
+        .scale = combined_scale,
+        .base_x = content_x,
+        .base_y = content_y,
+        .geo_x = geo.x,
+        .geo_y = geo.y,
+        .opacity = 1.0f, /* Popups always fully opaque */
+    };
+
+    /*
+     * Render all popup surfaces.
+     * wlr_xdg_surface_for_each_popup_surface iterates over mapped popups
+     * and their subsurfaces, with coordinates relative to the root surface.
+     */
+    wlr_xdg_surface_for_each_popup_surface(xdg_surface, render_surface_iterator,
+                                           &data);
+}
+
 void view_update_focus_animations(struct infinidesk_server *server,
                                   uint32_t time_ms) {
     struct infinidesk_view *view;

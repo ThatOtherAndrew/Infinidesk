@@ -243,6 +243,14 @@ static void output_render_custom(struct infinidesk_output *output) {
         view_render(view, pass, output_scale);
     }
 
+    /* 3b. Render popups on top of all views (so context menus are visible) */
+    wl_list_for_each_reverse(view, &server->views, link) {
+        if (!view->xdg_toplevel->base->surface->mapped) {
+            continue;
+        }
+        view_render_popups(view, pass, output_scale);
+    }
+
     /* 4. Top layer */
     render_layer_surfaces(output, pass, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
 
@@ -274,11 +282,13 @@ static void output_render_custom(struct infinidesk_output *output) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
 
-    /* Send frame done to views */
+    /* Send frame done to views and their popups */
     wl_list_for_each(view, &server->views, link) {
         if (view->xdg_toplevel->base->surface->mapped) {
             wlr_xdg_surface_for_each_surface(view->xdg_toplevel->base,
                                              send_frame_done_iterator, &now);
+            wlr_xdg_surface_for_each_popup_surface(
+                view->xdg_toplevel->base, send_frame_done_iterator, &now);
         }
     }
 

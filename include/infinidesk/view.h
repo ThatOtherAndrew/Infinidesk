@@ -155,6 +155,13 @@ void view_render(struct infinidesk_view *view, struct wlr_render_pass *pass,
                  float output_scale);
 
 /*
+ * Render the view's popup surfaces (context menus, dropdowns, etc.).
+ * Should be called after all views are rendered so popups appear on top.
+ */
+void view_render_popups(struct infinidesk_view *view,
+                        struct wlr_render_pass *pass, float output_scale);
+
+/*
  * Snaps to a view
  */
 void view_snap(struct infinidesk_canvas *canvas, struct infinidesk_view *view,
