@@ -14,7 +14,9 @@
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/util/edges.h>
 #include <wlr/util/log.h>
+#include <wlr/xcursor.h>
 
 #include "infinidesk/canvas.h"
 #include "infinidesk/cursor.h"
@@ -362,6 +364,25 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
     if (server->drawing.drawing_mode) {
         drawing_ui_update_hover(&server->drawing.ui_panel, server->cursor->x,
                                 server->cursor->y);
+    }
+
+    /*
+     * Check if cursor is near a window edge for resizing.
+     * This takes priority over normal view hover.
+     */
+    struct infinidesk_view *edge_view = NULL;
+    uint32_t edges = server_view_edge_at(server, server->cursor->x,
+                                         server->cursor->y, &edge_view);
+
+    if (edges != WLR_EDGE_NONE && edge_view) {
+        /* Cursor is on a resize edge - show resize cursor */
+        const char *cursor_name = wlr_xcursor_get_resize_name(edges);
+        wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
+                               cursor_name);
+
+        /* Clear pointer focus since we're on an edge, not a surface */
+        wlr_seat_pointer_clear_focus(server->seat);
+        return;
     }
 
     /*
