@@ -25,6 +25,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/background.h"
@@ -361,4 +362,100 @@ struct infinidesk_view *server_view_at(struct infinidesk_server *server,
     *sx = 0;
     *sy = 0;
     return NULL;
+}
+
+uint32_t server_view_edge_at(struct infinidesk_server *server, double lx,
+                             double ly, struct infinidesk_view **view_out) {
+    /*
+     * Check if cursor is near a window edge (from outside the window).
+     * Returns a bitfield of edges (WLR_EDGE_TOP, WLR_EDGE_LEFT, etc.)
+     * or WLR_EDGE_NONE if not near any edge.
+     *
+     * The grab zone scales with output scale for HiDPI displays.
+     */
+    const double base_grab_zone = 5.0;
+    double grab_zone = base_grab_zone * server->output_scale;
+
+    struct infinidesk_canvas *canvas = &server->canvas;
+
+    if (view_out) {
+        *view_out = NULL;
+    }
+
+    /* Views are ordered front-to-back in the list (front first) */
+    struct infinidesk_view *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (!view->xdg_toplevel->base->surface->mapped) {
+            continue;
+        }
+
+        /* Get the view geometry */
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+        /*
+         * Calculate where the view is rendered on screen.
+         * This must match the calculation in view_render() and
+         * server_view_at().
+         */
+        double screen_x, screen_y;
+        canvas_to_screen(canvas, view->x, view->y, &screen_x, &screen_y);
+
+        /* The rendered bounds of the window geometry on screen */
+        double render_x = screen_x - geo.x * canvas->scale;
+        double render_y = screen_y - geo.y * canvas->scale;
+        double render_width = geo.width * canvas->scale;
+        double render_height = geo.height * canvas->scale;
+
+        /*
+         * Check if cursor is OUTSIDE the window but within the grab zone.
+         * First, check if within the extended bounds (window + grab zone).
+         */
+        double ext_x = render_x - grab_zone;
+        double ext_y = render_y - grab_zone;
+        double ext_width = render_width + 2 * grab_zone;
+        double ext_height = render_height + 2 * grab_zone;
+
+        if (lx < ext_x || lx >= ext_x + ext_width || ly < ext_y ||
+            ly >= ext_y + ext_height) {
+            /* Cursor is outside the extended bounds */
+            continue;
+        }
+
+        /* Check if cursor is INSIDE the window (not on edge) */
+        if (lx >= render_x && lx < render_x + render_width && ly >= render_y &&
+            ly < render_y + render_height) {
+            /* Cursor is inside the window, not on an edge */
+            continue;
+        }
+
+        /*
+         * Cursor is in the grab zone outside the window.
+         * Determine which edge(s) based on position.
+         */
+        uint32_t edges = WLR_EDGE_NONE;
+
+        /* Check vertical edges */
+        if (ly < render_y) {
+            edges |= WLR_EDGE_TOP;
+        } else if (ly >= render_y + render_height) {
+            edges |= WLR_EDGE_BOTTOM;
+        }
+
+        /* Check horizontal edges */
+        if (lx < render_x) {
+            edges |= WLR_EDGE_LEFT;
+        } else if (lx >= render_x + render_width) {
+            edges |= WLR_EDGE_RIGHT;
+        }
+
+        if (edges != WLR_EDGE_NONE) {
+            if (view_out) {
+                *view_out = view;
+            }
+            return edges;
+        }
+    }
+
+    return WLR_EDGE_NONE;
 }

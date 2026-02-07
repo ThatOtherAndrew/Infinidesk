@@ -159,4 +159,14 @@ struct infinidesk_view *server_view_at(struct infinidesk_server *server,
                                        struct wlr_surface **surface, double *sx,
                                        double *sy);
 
+/*
+ * Check if the cursor is near a window edge for resizing.
+ * Returns a bitfield of enum wlr_edges indicating which edges are near,
+ * or WLR_EDGE_NONE if not near any edge.
+ * If view_out is provided, it will be set to the view whose edge was found.
+ * lx, ly are screen coordinates.
+ */
+uint32_t server_view_edge_at(struct infinidesk_server *server, double lx,
+                             double ly, struct infinidesk_view **view_out);
+
 #endif /* INFINIDESK_SERVER_H */
