@@ -347,9 +347,72 @@ void view_resize_update(struct infinidesk_view *view, double cursor_x,
         return;
     }
 
-    /* TODO: Implement resize logic in Step 5 */
-    (void)cursor_x;
-    (void)cursor_y;
+    /*
+     * Calculate how far the cursor has moved in canvas coordinates
+     * since the resize began.
+     */
+    double dx = cursor_x - view->resize_grab_x;
+    double dy = cursor_y - view->resize_grab_y;
+
+    int new_width = view->resize_start_width;
+    int new_height = view->resize_start_height;
+    double new_x = view->resize_start_x;
+    double new_y = view->resize_start_y;
+
+    /*
+     * Apply delta to the appropriate edges.
+     * Right/bottom edges grow the window in the positive direction.
+     * Left/top edges grow in the negative direction and shift position.
+     */
+    if (view->resize_edges & WLR_EDGE_RIGHT) {
+        new_width += (int)dx;
+    } else if (view->resize_edges & WLR_EDGE_LEFT) {
+        new_width -= (int)dx;
+        new_x = view->resize_start_x + dx;
+    }
+
+    if (view->resize_edges & WLR_EDGE_BOTTOM) {
+        new_height += (int)dy;
+    } else if (view->resize_edges & WLR_EDGE_TOP) {
+        new_height -= (int)dy;
+        new_y = view->resize_start_y + dy;
+    }
+
+    /*
+     * Enforce minimum size from client hints.
+     * If the client hasn't set a minimum, use a sensible default.
+     */
+    struct wlr_xdg_toplevel_state *state = &view->xdg_toplevel->current;
+    int min_width = state->min_width > 0 ? state->min_width : 1;
+    int min_height = state->min_height > 0 ? state->min_height : 1;
+
+    if (new_width < min_width) {
+        /*
+         * Clamp and correct position for left-edge resize so the
+         * right edge stays anchored.
+         */
+        if (view->resize_edges & WLR_EDGE_LEFT) {
+            new_x -= (min_width - new_width);
+        }
+        new_width = min_width;
+    }
+
+    if (new_height < min_height) {
+        if (view->resize_edges & WLR_EDGE_TOP) {
+            new_y -= (min_height - new_height);
+        }
+        new_height = min_height;
+    }
+
+    /* Update view position if resizing from left or top edge */
+    view->x = new_x;
+    view->y = new_y;
+
+    /* Request the client to resize */
+    wlr_xdg_toplevel_set_size(view->xdg_toplevel, new_width, new_height);
+
+    /* Update scene position to reflect any position changes */
+    view_update_scene_position(view);
 }
 
 void view_resize_end(struct infinidesk_view *view) {

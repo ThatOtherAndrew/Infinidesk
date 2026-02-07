@@ -385,9 +385,16 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
         return;
     }
 
-    case INFINIDESK_CURSOR_RESIZE:
-        /* Resize not yet implemented */
+    case INFINIDESK_CURSOR_RESIZE: {
+        /* Update the view size during resize */
+        if (server->grabbed_view) {
+            double canvas_x, canvas_y;
+            screen_to_canvas(&server->canvas, server->cursor->x,
+                             server->cursor->y, &canvas_x, &canvas_y);
+            view_resize_update(server->grabbed_view, canvas_x, canvas_y);
+        }
         return;
+    }
 
     case INFINIDESK_CURSOR_PASSTHROUGH:
     default:
