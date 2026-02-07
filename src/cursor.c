@@ -121,6 +121,35 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
 
+    if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        /*
+         * Check if clicking on a resize edge before notifying the seat.
+         * We don't want to forward the button press to clients when
+         * initiating a compositor-level resize.
+         */
+        if (event->button == BTN_LEFT) {
+            struct infinidesk_view *edge_view = NULL;
+            uint32_t edges = server_view_edge_at(server, server->cursor->x,
+                                                 server->cursor->y, &edge_view);
+
+            if (edges != WLR_EDGE_NONE && edge_view) {
+                wlr_log(WLR_DEBUG, "Beginning edge resize (edges=0x%x)", edges);
+                server->cursor_mode = INFINIDESK_CURSOR_RESIZE;
+                server->grabbed_view = edge_view;
+                server->resize_edges = edges;
+
+                double canvas_x, canvas_y;
+                screen_to_canvas(&server->canvas, server->cursor->x,
+                                 server->cursor->y, &canvas_x, &canvas_y);
+                view_resize_begin(edge_view, edges, canvas_x, canvas_y);
+
+                view_focus(edge_view);
+                view_raise(edge_view);
+                return;
+            }
+        }
+    }
+
     /* Notify the seat of the button event */
     wlr_seat_pointer_notify_button(server->seat, event->time_msec,
                                    event->button, event->state);
@@ -212,6 +241,13 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
         } else if (server->cursor_mode == INFINIDESK_CURSOR_PAN) {
             /* End canvas pan */
             canvas_pan_end(&server->canvas);
+            cursor_reset_mode(server);
+
+        } else if (server->cursor_mode == INFINIDESK_CURSOR_RESIZE) {
+            /* End window resize */
+            if (server->grabbed_view) {
+                view_resize_end(server->grabbed_view);
+            }
             cursor_reset_mode(server);
 
         } else if (server->cursor_mode == INFINIDESK_CURSOR_DRAW) {
