@@ -55,6 +55,16 @@ struct infinidesk_view {
     double grab_view_x; /* View position when grab started */
     double grab_view_y;
 
+    /* Interactive resize state */
+    bool is_resizing;
+    uint32_t resize_edges; /* Which edges are being resized (enum wlr_edges) */
+    double resize_grab_x;  /* Canvas coords where grab started */
+    double resize_grab_y;
+    double resize_start_x; /* View position when resize started */
+    double resize_start_y;
+    int resize_start_width; /* View size when resize started */
+    int resize_start_height;
+
     /* Focus animation state */
     bool focused;                 /* Current focus state */
     double focus_animation;       /* 0.0 = unfocused, 1.0 = focused */
@@ -141,6 +151,26 @@ void view_move_update(struct infinidesk_view *view, double cursor_x,
  * End the interactive move operation.
  */
 void view_move_end(struct infinidesk_view *view);
+
+/*
+ * Begin an interactive resize operation.
+ * edges is a bitfield of enum wlr_edges indicating which edges to resize.
+ * cursor_x/cursor_y are in canvas coordinates.
+ */
+void view_resize_begin(struct infinidesk_view *view, uint32_t edges,
+                       double cursor_x, double cursor_y);
+
+/*
+ * Update view size during an interactive resize.
+ * cursor_x/cursor_y are in canvas coordinates.
+ */
+void view_resize_update(struct infinidesk_view *view, double cursor_x,
+                        double cursor_y);
+
+/*
+ * End the interactive resize operation.
+ */
+void view_resize_end(struct infinidesk_view *view);
 
 /*
  * Close the view (request the client to close).

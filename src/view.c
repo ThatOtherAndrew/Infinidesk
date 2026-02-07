@@ -21,6 +21,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/canvas.h"
@@ -310,6 +311,59 @@ void view_move_end(struct infinidesk_view *view) {
         wlr_log(WLR_DEBUG, "View move ended at (%.1f, %.1f)", view->x, view->y);
     }
     view->is_moving = false;
+}
+
+void view_resize_begin(struct infinidesk_view *view, uint32_t edges,
+                       double cursor_x, double cursor_y) {
+    if (!view || view->is_resizing) {
+        return;
+    }
+
+    wlr_log(WLR_DEBUG, "view_resize_begin: edges=0x%x at (%.1f, %.1f)", edges,
+            cursor_x, cursor_y);
+
+    view->is_resizing = true;
+    view->resize_edges = edges;
+    view->resize_grab_x = cursor_x;
+    view->resize_grab_y = cursor_y;
+
+    /* Store starting position */
+    view->resize_start_x = view->x;
+    view->resize_start_y = view->y;
+
+    /* Store starting size from XDG geometry */
+    struct wlr_box geo;
+    wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+    view->resize_start_width = geo.width;
+    view->resize_start_height = geo.height;
+
+    /* Notify client that resize has started */
+    wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
+}
+
+void view_resize_update(struct infinidesk_view *view, double cursor_x,
+                        double cursor_y) {
+    if (!view || !view->is_resizing) {
+        return;
+    }
+
+    /* TODO: Implement resize logic in Step 5 */
+    (void)cursor_x;
+    (void)cursor_y;
+}
+
+void view_resize_end(struct infinidesk_view *view) {
+    if (!view || !view->is_resizing) {
+        return;
+    }
+
+    wlr_log(WLR_DEBUG, "view_resize_end");
+
+    view->is_resizing = false;
+    view->resize_edges = WLR_EDGE_NONE;
+
+    /* Notify client that resize has ended */
+    wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, false);
 }
 
 void view_close(struct infinidesk_view *view) {
