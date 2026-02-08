@@ -1,0 +1,82 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  nix-build:
+    name: Nix Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+
+      - name: Build with Nix
+        run: nix build
+
+  ubuntu-build:
+    name: Ubuntu Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson ninja-build pkg-config \
+            libwayland-dev wayland-protocols libwayland-bin \
+            libxkbcommon-dev libpixman-1-dev libcairo2-dev \
+            libpango1.0-dev libdrm-dev libseat-dev \
+            libudev-dev libinput-dev libgbm-dev \
+            libxcb-dri3-dev libxcb-present-dev \
+            libxcb-render-util0-dev libxcb-shm0-dev \
+            libxcb-xinput-dev libxcb-composite0-dev \
+            libxcb-ewmh-dev libxcb-icccm4-dev \
+            libxcb-res0-dev hwdata libdisplay-info-dev \
+            libliftoff-dev
+
+      - name: Cache wlroots
+        id: cache-wlroots
+        uses: actions/cache@v4
+        with:
+          path: wlroots-0.18.3
+          key: wlroots-0.18.3-${{ runner.os }}
+
+      - name: Build wlroots
+        if: steps.cache-wlroots.outputs.cache-hit != 'true'
+        run: |
+          wget https://gitlab.freedesktop.org/wlroots/wlroots/-/archive/0.18.3/wlroots-0.18.3.tar.gz
+          tar xf wlroots-0.18.3.tar.gz
+          cd wlroots-0.18.3
+          meson setup build --prefix=/usr
+          ninja -C build
+
+      - name: Install wlroots
+        run: |
+          cd wlroots-0.18.3
+          sudo ninja -C build install
+          sudo ldconfig
+
+      - name: Install wlr-protocols
+        run: |
+          git clone https://gitlab.freedesktop.org/wlroots/wlr-protocols.git
+          cd wlr-protocols
+          sudo meson setup build --prefix=/usr
+          sudo ninja -C build install
+
+      - name: Configure
+        run: meson setup build
+
+      - name: Build
+        run: ninja -C build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: infinidesk-ubuntu
+          path: build/infinidesk
