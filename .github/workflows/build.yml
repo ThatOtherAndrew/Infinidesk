@@ -92,9 +92,8 @@ jobs:
       - name: Install wlr-protocols
         run: |
           git clone https://gitlab.freedesktop.org/wlroots/wlr-protocols.git
-          cd wlr-protocols
-          sudo meson setup build --prefix=/usr
-          sudo ninja -C build install
+          sudo mkdir -p /usr/share/wlr-protocols
+          sudo cp -r wlr-protocols/unstable /usr/share/wlr-protocols/
 
       - name: Configure
         run: meson setup build
