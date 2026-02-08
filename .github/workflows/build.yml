@@ -160,7 +160,7 @@ jobs:
           echo "=== Package contents ==="
           dpkg-deb --contents "${PKG}.deb"
 
-      - name: Upload .deb artefact
+      - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: infinidesk-deb
