@@ -373,7 +373,7 @@ uint32_t server_view_edge_at(struct infinidesk_server *server, double lx,
      *
      * The grab zone scales with output scale for HiDPI displays.
      */
-    const double base_grab_zone = 5.0;
+    const double base_grab_zone = 10.0;
     double grab_zone = base_grab_zone * server->output_scale;
 
     struct infinidesk_canvas *canvas = &server->canvas;
