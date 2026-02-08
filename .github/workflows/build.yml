@@ -117,10 +117,13 @@ jobs:
           cp build/infinidesk "$BIN_DIR/"
 
           # Bundle wayland and wlroots shared libraries that aren't
-          # available (or are too old) in Ubuntu 24.04 repos
-          cp /usr/lib/libwlroots-0.18.so "$LIB_DIR/"
-          cp /usr/lib/x86_64-linux-gnu/libwayland-server.so.0* "$LIB_DIR/" 2>/dev/null \
-            || cp /usr/lib/libwayland-server.so.0* "$LIB_DIR/"
+          # available (or are too old) in Ubuntu 24.04 repos.
+          # Use find since the install path varies by architecture.
+          find /usr/lib -name 'libwlroots-0.18.so*' -exec cp -P {} "$LIB_DIR/" \;
+          find /usr/lib -name 'libwayland-server.so.0*' -exec cp -P {} "$LIB_DIR/" \;
+
+          echo "=== Bundled libraries ==="
+          ls -la "$LIB_DIR/"
 
           # Patch RPATH so the binary finds bundled libs at runtime
           patchelf --set-rpath '/usr/local/lib/infinidesk' "$BIN_DIR/infinidesk"
