@@ -336,6 +336,8 @@ void view_resize_begin(struct infinidesk_view *view, uint32_t edges,
     wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
     view->resize_start_width = geo.width;
     view->resize_start_height = geo.height;
+    view->resize_pending_width = geo.width;
+    view->resize_pending_height = geo.height;
 
     /* Notify client that resize has started */
     wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
@@ -404,15 +406,24 @@ void view_resize_update(struct infinidesk_view *view, double cursor_x,
         new_height = min_height;
     }
 
-    /* Update view position if resizing from left or top edge */
-    view->x = new_x;
-    view->y = new_y;
+    /* Store the requested size for commit synchronisation */
+    view->resize_pending_width = new_width;
+    view->resize_pending_height = new_height;
+
+    /*
+     * Only update position immediately for right/bottom edge resizing
+     * where the top-left corner doesn't move. For left/top edges, the
+     * position update is deferred to handle_commit() so it stays in
+     * sync with the client's actual committed size, preventing jitter.
+     */
+    if (!(view->resize_edges & (WLR_EDGE_LEFT | WLR_EDGE_TOP))) {
+        view->x = new_x;
+        view->y = new_y;
+        view_update_scene_position(view);
+    }
 
     /* Request the client to resize */
     wlr_xdg_toplevel_set_size(view->xdg_toplevel, new_width, new_height);
-
-    /* Update scene position to reflect any position changes */
-    view_update_scene_position(view);
 }
 
 void view_resize_end(struct infinidesk_view *view) {
@@ -699,20 +710,50 @@ static void handle_commit(struct wl_listener *listener, void *data) {
         wlr_xdg_toplevel_set_size(view->xdg_toplevel, 0, 0);
     }
 
+    if (!view->xdg_toplevel->base->surface->mapped) {
+        return;
+    }
+
+    /*
+     * During a left/top edge resize, synchronise the view position with
+     * the client's actual committed size. This prevents jitter caused by
+     * the position updating before the client has resized.
+     *
+     * The opposite edge is anchored by computing position from the
+     * committed geometry rather than the requested geometry.
+     */
+    if (view->is_resizing &&
+        (view->resize_edges & (WLR_EDGE_LEFT | WLR_EDGE_TOP))) {
+        struct wlr_box geo;
+        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+
+        if (view->resize_edges & WLR_EDGE_LEFT) {
+            view->x =
+                view->resize_start_x + (view->resize_start_width - geo.width);
+        }
+        if (view->resize_edges & WLR_EDGE_TOP) {
+            view->y =
+                view->resize_start_y + (view->resize_start_height - geo.height);
+        }
+
+        view->last_geo_x = geo.x;
+        view->last_geo_y = geo.y;
+        view_update_scene_position(view);
+        return;
+    }
+
     /*
      * Update scene position when geometry changes.
      * CSD windows (like Chrome/Firefox) may report their shadow offset
      * after the initial commit, so we need to adjust when it changes.
      */
-    if (view->xdg_toplevel->base->surface->mapped) {
-        struct wlr_box geo;
-        wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+    struct wlr_box geo;
+    wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
 
-        if (geo.x != view->last_geo_x || geo.y != view->last_geo_y) {
-            view->last_geo_x = geo.x;
-            view->last_geo_y = geo.y;
-            view_update_scene_position(view);
-        }
+    if (geo.x != view->last_geo_x || geo.y != view->last_geo_y) {
+        view->last_geo_x = geo.x;
+        view->last_geo_y = geo.y;
+        view_update_scene_position(view);
     }
 }
 
