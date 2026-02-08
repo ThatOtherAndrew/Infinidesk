@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  WAYLAND_VERSION: "1.23.1"
+  WLROOTS_VERSION: "0.18.3"
+
 jobs:
   nix-build:
     name: Nix Build
@@ -38,27 +42,50 @@ jobs:
             libxcb-xinput-dev libxcb-composite0-dev \
             libxcb-ewmh-dev libxcb-icccm4-dev \
             libxcb-res0-dev hwdata libdisplay-info-dev \
-            libliftoff-dev
+            libliftoff-dev libffi-dev libxml2-dev
+
+      # Ubuntu 24.04 ships wayland 1.22, but wlroots 0.18 requires >= 1.23
+      - name: Cache wayland
+        id: cache-wayland
+        uses: actions/cache@v4
+        with:
+          path: wayland-${{ env.WAYLAND_VERSION }}
+          key: wayland-${{ env.WAYLAND_VERSION }}-${{ runner.os }}
+
+      - name: Build wayland
+        if: steps.cache-wayland.outputs.cache-hit != 'true'
+        run: |
+          wget https://gitlab.freedesktop.org/wayland/wayland/-/archive/$WAYLAND_VERSION/wayland-$WAYLAND_VERSION.tar.gz
+          tar xf wayland-$WAYLAND_VERSION.tar.gz
+          cd wayland-$WAYLAND_VERSION
+          meson setup build --prefix=/usr -Ddocumentation=false -Dtests=false
+          ninja -C build
+
+      - name: Install wayland
+        run: |
+          cd wayland-$WAYLAND_VERSION
+          sudo ninja -C build install
+          sudo ldconfig
 
       - name: Cache wlroots
         id: cache-wlroots
         uses: actions/cache@v4
         with:
-          path: wlroots-0.18.3
-          key: wlroots-0.18.3-${{ runner.os }}
+          path: wlroots-${{ env.WLROOTS_VERSION }}
+          key: wlroots-${{ env.WLROOTS_VERSION }}-${{ runner.os }}
 
       - name: Build wlroots
         if: steps.cache-wlroots.outputs.cache-hit != 'true'
         run: |
-          wget https://gitlab.freedesktop.org/wlroots/wlroots/-/archive/0.18.3/wlroots-0.18.3.tar.gz
-          tar xf wlroots-0.18.3.tar.gz
-          cd wlroots-0.18.3
+          wget https://gitlab.freedesktop.org/wlroots/wlroots/-/archive/$WLROOTS_VERSION/wlroots-$WLROOTS_VERSION.tar.gz
+          tar xf wlroots-$WLROOTS_VERSION.tar.gz
+          cd wlroots-$WLROOTS_VERSION
           meson setup build --prefix=/usr
           ninja -C build
 
       - name: Install wlroots
         run: |
-          cd wlroots-0.18.3
+          cd wlroots-$WLROOTS_VERSION
           sudo ninja -C build install
           sudo ldconfig
 
@@ -75,7 +102,7 @@ jobs:
       - name: Build
         run: ninja -C build
 
-      - name: Upload build artifact
+      - name: Upload build artefact
         uses: actions/upload-artifact@v4
         with:
           name: infinidesk-ubuntu
