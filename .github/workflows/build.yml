@@ -9,6 +9,7 @@ on:
 env:
   WAYLAND_VERSION: "1.23.1"
   WLROOTS_VERSION: "0.18.3"
+  INFINIDESK_VERSION: "0.1.0"
 
 jobs:
   nix-build:
@@ -32,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            meson ninja-build pkg-config \
+            meson ninja-build pkg-config patchelf \
             libwayland-dev wayland-protocols libwayland-bin \
             libxkbcommon-dev libpixman-1-dev libcairo2-dev \
             libpango1.0-dev libdrm-dev libseat-dev \
@@ -95,14 +96,69 @@ jobs:
           sudo mkdir -p /usr/share/wlr-protocols
           sudo cp -r wlr-protocols/unstable /usr/share/wlr-protocols/
 
-      - name: Configure
+      - name: Configure Infinidesk
         run: meson setup build
 
-      - name: Build
+      - name: Build Infinidesk
         run: ninja -C build
 
-      - name: Upload build artefact
+      - name: Build .deb package
+        run: |
+          set -e
+
+          PKG="infinidesk_${INFINIDESK_VERSION}_amd64"
+          LIB_DIR="$PKG/usr/local/lib/infinidesk"
+          BIN_DIR="$PKG/usr/local/bin"
+
+          # Create directory structure
+          mkdir -p "$BIN_DIR" "$LIB_DIR" "$PKG/DEBIAN"
+
+          # Copy binary
+          cp build/infinidesk "$BIN_DIR/"
+
+          # Bundle wayland and wlroots shared libraries that aren't
+          # available (or are too old) in Ubuntu 24.04 repos
+          cp /usr/lib/libwlroots-0.18.so "$LIB_DIR/"
+          cp /usr/lib/x86_64-linux-gnu/libwayland-server.so.0* "$LIB_DIR/" 2>/dev/null \
+            || cp /usr/lib/libwayland-server.so.0* "$LIB_DIR/"
+
+          # Patch RPATH so the binary finds bundled libs at runtime
+          patchelf --set-rpath '/usr/local/lib/infinidesk' "$BIN_DIR/infinidesk"
+
+          # Verify the patched binary finds its libs
+          echo "=== Patched library search paths ==="
+          patchelf --print-rpath "$BIN_DIR/infinidesk"
+
+          # Write package control file
+          cat > "$PKG/DEBIAN/control" << EOF
+          Package: infinidesk
+          Version: ${INFINIDESK_VERSION}
+          Architecture: amd64
+          Maintainer: Andromeda (ThatOtherAndrew)
+          Description: Infinite canvas Wayland compositor
+          Depends: libxkbcommon0, libcairo2, libpango-1.0-0, libpangocairo-1.0-0,
+           libdrm2, libgbm1, libinput10, libseat1, libudev1,
+           libpixman-1-0, libdisplay-info2, libliftoff0,
+           libxcb1, libxcb-dri3-0, libxcb-present0, libxcb-render0,
+           libxcb-render-util0, libxcb-shm0, libxcb-xinput0, libxcb-xfixes0,
+           libegl1, libgles2, libvulkan1
+          Homepage: https://github.com/ThatOtherAndrew/Infinidesk
+          License: MIT
+          Section: x11
+          Priority: optional
+          EOF
+
+          # Fix control file formatting (remove leading spaces from heredoc)
+          sed -i 's/^          //' "$PKG/DEBIAN/control"
+
+          # Build the .deb
+          dpkg-deb --build "$PKG"
+
+          echo "=== Package contents ==="
+          dpkg-deb --contents "${PKG}.deb"
+
+      - name: Upload .deb artefact
         uses: actions/upload-artifact@v4
         with:
-          name: infinidesk-ubuntu
-          path: build/infinidesk
+          name: infinidesk-deb
+          path: infinidesk_${{ env.INFINIDESK_VERSION }}_amd64.deb
