@@ -10,15 +10,18 @@
 
 #include <stdlib.h>
 
+#include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
 #include "infinidesk/layer_shell.h"
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
+#include "infinidesk/view.h"
 
 /* Forward declarations */
 static void handle_layer_surface_map(struct wl_listener *listener, void *data);
@@ -157,6 +160,58 @@ void handle_new_layer_surface(struct wl_listener *listener, void *data) {
             (void *)layer, output->wlr_output->name, shell_layer);
 }
 
+/*
+ * Grant keyboard focus to a layer surface.
+ * Used when a layer surface has exclusive or on-demand keyboard interactivity.
+ */
+static void layer_surface_focus(struct infinidesk_layer_surface *layer) {
+    struct infinidesk_server *server = layer->server;
+    struct wlr_seat *seat = server->seat;
+    struct wlr_surface *surface = layer->layer_surface->surface;
+
+    server->focused_layer = layer;
+
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
+    if (keyboard) {
+        wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes,
+                                       keyboard->num_keycodes,
+                                       &keyboard->modifiers);
+    }
+
+    wlr_log(WLR_DEBUG, "Focused layer surface %p (keyboard_interactive=%d)",
+            (void *)layer, layer->layer_surface->current.keyboard_interactive);
+}
+
+/*
+ * Release keyboard focus from the currently focused layer surface.
+ * Refocuses the topmost XDG toplevel view if one exists.
+ */
+static void layer_surface_unfocus(struct infinidesk_layer_surface *layer) {
+    struct infinidesk_server *server = layer->server;
+
+    if (server->focused_layer != layer) {
+        return;
+    }
+
+    server->focused_layer = NULL;
+
+    /*
+     * Refocus the topmost mapped view, if any.
+     * The views list is ordered front-to-back, so the first mapped
+     * view is the one that should regain focus.
+     */
+    struct infinidesk_view *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->xdg_toplevel->base->surface->mapped) {
+            view_focus(view);
+            return;
+        }
+    }
+
+    /* No views to refocus — clear keyboard focus */
+    wlr_seat_keyboard_clear_focus(server->seat);
+}
+
 static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
     (void)data;
     struct infinidesk_layer_surface *layer =
@@ -166,6 +221,15 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
 
     /* Re-arrange to update exclusive zones */
     layer_shell_arrange(layer->output);
+
+    /*
+     * Grant keyboard focus if this layer surface requests exclusive
+     * keyboard interactivity (e.g. launchers like rofi, wofi, fuzzel).
+     */
+    if (layer->layer_surface->current.keyboard_interactive ==
+        ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE) {
+        layer_surface_focus(layer);
+    }
 }
 
 static void handle_layer_surface_unmap(struct wl_listener *listener,
@@ -175,6 +239,11 @@ static void handle_layer_surface_unmap(struct wl_listener *listener,
         wl_container_of(listener, layer, unmap);
 
     wlr_log(WLR_DEBUG, "Layer surface %p unmapped", (void *)layer);
+
+    /* Release keyboard focus if this surface held it */
+    if (layer->server->focused_layer == layer) {
+        layer_surface_unfocus(layer);
+    }
 
     /* Re-arrange to update exclusive zones */
     layer_shell_arrange(layer->output);
@@ -187,6 +256,11 @@ static void handle_layer_surface_destroy(struct wl_listener *listener,
         wl_container_of(listener, layer, destroy);
 
     wlr_log(WLR_DEBUG, "Layer surface %p destroyed", (void *)layer);
+
+    /* Release keyboard focus if this surface held it */
+    if (layer->server->focused_layer == layer) {
+        layer_surface_unfocus(layer);
+    }
 
     /* Remove from output's layer list */
     wl_list_remove(&layer->link);
@@ -274,6 +348,22 @@ static void handle_layer_surface_commit(struct wl_listener *listener,
                      WLR_LAYER_SURFACE_V1_STATE_MARGIN |
                      WLR_LAYER_SURFACE_V1_STATE_LAYER)) {
         layer_shell_arrange(layer->output);
+    }
+
+    /*
+     * Handle keyboard interactivity changes.
+     * If the surface now requests exclusive focus, grant it.
+     * If it no longer requests exclusive focus, release it.
+     */
+    if (committed & WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY) {
+        enum zwlr_layer_surface_v1_keyboard_interactivity ki =
+            layer_surface->current.keyboard_interactive;
+
+        if (ki == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE) {
+            layer_surface_focus(layer);
+        } else if (layer->server->focused_layer == layer) {
+            layer_surface_unfocus(layer);
+        }
     }
 }
 

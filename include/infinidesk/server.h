@@ -33,6 +33,7 @@
 struct infinidesk_view;
 struct infinidesk_output;
 struct infinidesk_keyboard;
+struct infinidesk_layer_surface;
 
 /* Cursor interaction modes */
 enum infinidesk_cursor_mode {
@@ -107,6 +108,8 @@ struct infinidesk_server {
     /* Layer shell */
     struct wlr_layer_shell_v1 *layer_shell;
     struct wl_listener new_layer_surface;
+    struct infinidesk_layer_surface
+        *focused_layer; /* Layer surface with exclusive keyboard focus */
 
     /* Infinite canvas */
     struct infinidesk_canvas canvas;

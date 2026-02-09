@@ -18,10 +18,15 @@
 #include <wlr/util/log.h>
 #include <wlr/xcursor.h>
 
+#include <wlr/types/wlr_keyboard.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
+
 #include "infinidesk/canvas.h"
 #include "infinidesk/cursor.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/drawing_ui.h"
+#include "infinidesk/layer_shell.h"
+#include "infinidesk/output.h"
 #include "infinidesk/server.h"
 #include "infinidesk/view.h"
 
@@ -156,6 +161,56 @@ void cursor_handle_button(struct wl_listener *listener, void *data) {
 
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         /* Button pressed */
+
+        /*
+         * Check if cursor is over a layer surface.
+         * Layer surfaces take priority over views for click handling.
+         */
+        struct infinidesk_output *btn_output = output_get_primary(server);
+        if (btn_output) {
+            double layer_sx, layer_sy;
+            struct wlr_surface *layer_srf = NULL;
+            struct infinidesk_layer_surface *layer = layer_surface_at(
+                btn_output, server->cursor->x, server->cursor->y, &layer_srf,
+                &layer_sx, &layer_sy);
+
+            if (layer && layer_srf) {
+                /*
+                 * Clicked on a layer surface. Grant keyboard focus if
+                 * it has ON_DEMAND keyboard interactivity.
+                 */
+                enum zwlr_layer_surface_v1_keyboard_interactivity ki =
+                    layer->layer_surface->current.keyboard_interactive;
+                if (ki ==
+                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND) {
+                    server->focused_layer = layer;
+                    struct wlr_keyboard *keyboard =
+                        wlr_seat_get_keyboard(server->seat);
+                    if (keyboard) {
+                        wlr_seat_keyboard_notify_enter(
+                            server->seat, layer->layer_surface->surface,
+                            keyboard->keycodes, keyboard->num_keycodes,
+                            &keyboard->modifiers);
+                    }
+                }
+                /* Button event already forwarded via notify_button above */
+                return;
+            }
+        }
+
+        /*
+         * Click was not on a layer surface. If an ON_DEMAND layer surface
+         * currently holds focus, release it so a view can regain focus.
+         */
+        if (server->focused_layer) {
+            enum zwlr_layer_surface_v1_keyboard_interactivity ki =
+                server->focused_layer->layer_surface->current
+                    .keyboard_interactive;
+            if (ki == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND) {
+                server->focused_layer = NULL;
+            }
+        }
+
         double sx, sy;
         struct wlr_surface *surface = NULL;
         struct infinidesk_view *view = server_view_at(
@@ -295,9 +350,29 @@ void cursor_handle_axis(struct wl_listener *listener, void *data) {
     }
 
     /*
-     * Check if cursor is over a view - if so, pass scroll to the client.
-     * Otherwise, use scroll to pan the canvas.
+     * Check if cursor is over a layer surface or view — if so, pass scroll
+     * to the client. Otherwise, use scroll to pan the canvas.
      */
+
+    /* Layer surfaces take priority over views */
+    struct infinidesk_output *axis_output = output_get_primary(server);
+    if (axis_output) {
+        double layer_sx, layer_sy;
+        struct wlr_surface *layer_srf = NULL;
+        struct infinidesk_layer_surface *layer =
+            layer_surface_at(axis_output, server->cursor->x, server->cursor->y,
+                             &layer_srf, &layer_sx, &layer_sy);
+
+        if (layer && layer_srf) {
+            /* Scroll over a layer surface — pass to client */
+            wlr_seat_pointer_notify_axis(server->seat, event->time_msec,
+                                         event->orientation, event->delta,
+                                         event->delta_discrete, event->source,
+                                         event->relative_direction);
+            return;
+        }
+    }
+
     double sx, sy;
     struct wlr_surface *surface = NULL;
     struct infinidesk_view *view = server_view_at(
@@ -431,7 +506,30 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
     /*
      * Passthrough mode: update pointer focus, cursor image, and keyboard focus.
      * Implements focus-follows-mouse behaviour.
+     *
+     * Layer surfaces (overlays, panels, launchers) take priority over views
+     * for pointer input, as they are rendered above views in the z-order.
      */
+
+    /* Check if cursor is over a layer surface first */
+    struct infinidesk_output *cursor_output = output_get_primary(server);
+    if (cursor_output) {
+        double layer_sx, layer_sy;
+        struct wlr_surface *layer_srf = NULL;
+        struct infinidesk_layer_surface *layer = layer_surface_at(
+            cursor_output, server->cursor->x, server->cursor->y, &layer_srf,
+            &layer_sx, &layer_sy);
+
+        if (layer && layer_srf) {
+            /* Cursor is over a layer surface — send pointer events to it */
+            wlr_seat_pointer_notify_enter(server->seat, layer_srf, layer_sx,
+                                          layer_sy);
+            wlr_seat_pointer_notify_motion(server->seat, time, layer_sx,
+                                           layer_sy);
+            return;
+        }
+    }
+
     double sx, sy;
     struct wlr_surface *surface = NULL;
     struct infinidesk_view *view = server_view_at(
@@ -452,8 +550,9 @@ void cursor_process_motion(struct infinidesk_server *server, uint32_t time) {
          * Focus-follows-mouse: focus the view under cursor.
          * Skip focus changes during scroll panning to avoid stealing focus
          * while the user is navigating the canvas.
+         * Also skip if an exclusive layer surface holds keyboard focus.
          */
-        if (view && !server->scroll_panning) {
+        if (view && !server->scroll_panning && !server->focused_layer) {
             view_focus(view);
         }
     } else {

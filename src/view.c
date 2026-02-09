@@ -176,6 +176,14 @@ void view_focus(struct infinidesk_view *view) {
     }
 
     struct infinidesk_server *server = view->server;
+
+    /*
+     * Don't steal focus from an exclusive layer surface (e.g. a launcher).
+     * The layer surface must be explicitly unfocused first.
+     */
+    if (server->focused_layer) {
+        return;
+    }
     struct wlr_seat *seat = server->seat;
     struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
     struct wlr_surface *surface = view->xdg_toplevel->base->surface;
