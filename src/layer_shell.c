@@ -153,8 +153,17 @@ void handle_new_layer_surface(struct wl_listener *listener, void *data) {
     /* Add to the output's layer list */
     wl_list_insert(&output->layer_surfaces[shell_layer], &layer->link);
 
-    /* Arrange layer surfaces to send initial configure */
-    layer_shell_arrange(output);
+    /*
+     * Note: we do NOT call layer_shell_arrange() here. At this point, only
+     * get_layer_surface has been dispatched — the client's set_size,
+     * set_anchor, set_margin, etc. requests are still queued and haven't been
+     * processed. Arranging now would configure the surface with default/zero
+     * state, potentially causing an oversized first frame.
+     *
+     * The initial configure is sent from handle_layer_surface_commit() when
+     * initial_commit is true, at which point all pending client state has been
+     * applied.
+     */
 
     wlr_log(WLR_DEBUG, "Created layer surface %p on output %s, layer %d",
             (void *)layer, output->wlr_output->name, shell_layer);
