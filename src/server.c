@@ -56,10 +56,14 @@ bool server_init(struct infinidesk_server *server) {
 
     /* Create the backend */
     wlr_log(WLR_DEBUG, "Creating backend");
-    server->backend = wlr_backend_autocreate(server->event_loop, NULL);
+    server->backend =
+        wlr_backend_autocreate(server->event_loop, &server->session);
     if (!server->backend) {
         wlr_log(WLR_ERROR, "Failed to create wlroots backend");
         goto error_display;
+    }
+    if (server->session) {
+        wlr_log(WLR_INFO, "Session acquired (VT switching available)");
     }
 
     /* Create the renderer */

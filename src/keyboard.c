@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <wlr/backend/session.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
@@ -173,6 +174,7 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
                                 uint32_t modifiers, xkb_keysym_t sym) {
     /*
      * Compositor keybindings (using Alt for nested compositor compatibility):
+     * - Ctrl + Alt + F1-F12: Switch virtual terminal
      * - Alt + Enter:  Launch terminal (kitty)
      * - Alt + Q:      Close focused window
      * - Alt + Escape: Exit compositor
@@ -184,6 +186,22 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
      * - Alt + F:      Focus on first view (testing)
      * - Alt + Tab:    Cycle windows (release Alt to confirm)
      */
+
+    /*
+     * Ctrl + Alt + F1-F12: Switch to another virtual terminal.
+     * Only works when running on real hardware with a session (not nested).
+     */
+    if ((modifiers & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) ==
+        (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) {
+        if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
+            if (server->session) {
+                unsigned vt = sym - XKB_KEY_XF86Switch_VT_1 + 1;
+                wlr_log(WLR_INFO, "Switching to VT %u", vt);
+                wlr_session_change_vt(server->session, vt);
+            }
+            return true;
+        }
+    }
 
     /* Check for Alt modifier */
     if (!(modifiers & WLR_MODIFIER_ALT)) {

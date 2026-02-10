@@ -25,6 +25,8 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 
+#include <wlr/backend/session.h>
+
 #include "infinidesk/canvas.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/switcher.h"
@@ -52,6 +54,7 @@ struct infinidesk_server {
 
     /* wlroots core */
     struct wlr_backend *backend;
+    struct wlr_session *session; /* For VT switching (may be NULL if nested) */
     struct wlr_renderer *renderer;
     struct wlr_allocator *allocator;
     struct wlr_compositor *compositor;
