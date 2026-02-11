@@ -93,14 +93,18 @@ void keyboard_handle_key(struct wl_listener *listener, void *data) {
     /* Get current modifiers */
     uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
 
-    /* Track Alt key state (used for canvas operations)
-     * Note: Using Alt instead of Super for better nested compositor support */
+    /* Track Super key state (used for Super+drag canvas operations) */
     for (int i = 0; i < nsyms; i++) {
-        if (syms[i] == XKB_KEY_Alt_L || syms[i] == XKB_KEY_Alt_R) {
+        if (syms[i] == XKB_KEY_Super_L || syms[i] == XKB_KEY_Super_R) {
             server->super_pressed =
                 (event->state == WL_KEYBOARD_KEY_STATE_PRESSED);
+            break;
+        }
+    }
 
-            /* Alt release: commit switcher selection */
+    /* Alt release: commit Alt+Tab switcher selection */
+    for (int i = 0; i < nsyms; i++) {
+        if (syms[i] == XKB_KEY_Alt_L || syms[i] == XKB_KEY_Alt_R) {
             if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED &&
                 server->switcher.active) {
                 switcher_confirm(&server->switcher);
@@ -161,8 +165,10 @@ void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 /*
  * Handle Alt+Tab window switching.
  * Uses the Cairo-based switcher overlay.
+ * Each press of Tab whilst Alt is held cycles to the next window;
+ * releasing Alt confirms the selection.
  */
-static void handle_alt_tab(struct infinidesk_server *server) {
+static void handle_window_switcher(struct infinidesk_server *server) {
     if (!server->switcher.active) {
         switcher_start(&server->switcher);
     } else {
@@ -173,18 +179,17 @@ static void handle_alt_tab(struct infinidesk_server *server) {
 bool keyboard_handle_keybinding(struct infinidesk_server *server,
                                 uint32_t modifiers, xkb_keysym_t sym) {
     /*
-     * Compositor keybindings (using Alt for nested compositor compatibility):
+     * Compositor keybindings:
      * - Ctrl + Alt + F1-F12: Switch virtual terminal
-     * - Alt + Enter:  Launch terminal (kitty)
-     * - Alt + Q:      Close focused window
-     * - Alt + Escape: Exit compositor
-     * - Alt + D:      Toggle drawing mode
-     * - Alt + C:      Clear all drawings
-     * - Alt + U:      Undo last stroke
-     * - Alt + G:      Gather windows to center
-     * - Alt + R:      Redo last stroke
-     * - Alt + F:      Focus on first view (testing)
-     * - Alt + Tab:    Cycle windows (release Alt to confirm)
+     * - Alt + Tab:      Cycle windows (release Alt to confirm)
+     * - Super + Enter:  Launch terminal (kitty)
+     * - Super + Q:      Close focused window
+     * - Super + Escape: Exit compositor
+     * - Super + D:      Toggle drawing mode
+     * - Super + C:      Clear all drawings
+     * - Super + U:      Undo last stroke
+     * - Super + G:      Gather windows to centre
+     * - Super + R:      Redo last stroke
      */
 
     /*
@@ -203,15 +208,21 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
         }
     }
 
-    /* Check for Alt modifier */
-    if (!(modifiers & WLR_MODIFIER_ALT)) {
+    /* Alt + Tab: Cycle through windows (release Alt to confirm) */
+    if ((modifiers & WLR_MODIFIER_ALT) && sym == XKB_KEY_Tab) {
+        handle_window_switcher(server);
+        return true;
+    }
+
+    /* Check for Super modifier */
+    if (!(modifiers & WLR_MODIFIER_LOGO)) {
         return false;
     }
 
     switch (sym) {
     case XKB_KEY_Return:
     case XKB_KEY_KP_Enter:
-        /* Alt + Enter: Launch terminal */
+        /* Super + Enter: Launch terminal */
         wlr_log(WLR_INFO, "Launching terminal");
         if (fork() == 0) {
             execl("/bin/sh", "/bin/sh", "-c", "kitty", (char *)NULL);
@@ -221,7 +232,7 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
 
     case XKB_KEY_q:
     case XKB_KEY_Q:
-        /* Alt + Q: Close focused window */
+        /* Super + Q: Close focused window */
         if (!wl_list_empty(&server->views)) {
             struct infinidesk_view *view =
                 wl_container_of(server->views.next, view, link);
@@ -232,42 +243,37 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
 
     case XKB_KEY_g:
     case XKB_KEY_G:
-        /* Alt + G: Gather all windows to center */
+        /* Super + G: Gather all windows to center */
         views_gather(server, 20.0); /* 20px minimum gap */
         return true;
 
     case XKB_KEY_Escape:
-        /* Alt + Escape: Exit compositor */
+        /* Super + Escape: Exit compositor */
         wlr_log(WLR_INFO, "Exiting compositor");
         wl_display_terminate(server->wl_display);
         return true;
 
     case XKB_KEY_d:
     case XKB_KEY_D:
-        /* Alt + D: Toggle drawing mode */
+        /* Super + D: Toggle drawing mode */
         drawing_toggle_mode(&server->drawing);
         return true;
 
     case XKB_KEY_c:
     case XKB_KEY_C:
-        /* Alt + C: Clear all drawings */
+        /* Super + C: Clear all drawings */
         drawing_clear_all(&server->drawing);
         return true;
 
     case XKB_KEY_u:
     case XKB_KEY_U:
-        /* Alt + U: Undo last stroke */
+        /* Super + U: Undo last stroke */
         drawing_undo_last(&server->drawing);
-        return true;
-
-    case XKB_KEY_Tab:
-        /* Alt + Tab: Cycle through windows (release Alt to confirm) */
-        handle_alt_tab(server);
         return true;
 
     case XKB_KEY_r:
     case XKB_KEY_R:
-        /* Alt + R: Redo last stroke */
+        /* Super + R: Redo last stroke */
         drawing_redo_last(&server->drawing);
         return true;
 
