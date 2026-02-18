@@ -250,6 +250,16 @@ void server_finish(struct infinidesk_server *server) {
     /* Clean up switcher */
     switcher_finish(&server->switcher);
 
+    /* Free keybindings (ownership transferred from config in main.c) */
+    if (server->keybinds) {
+        for (int i = 0; i < server->keybind_count; i++) {
+            free(server->keybinds[i].value);
+        }
+        free(server->keybinds);
+        server->keybinds = NULL;
+        server->keybind_count = 0;
+    }
+
     /* Note: Most resources are automatically cleaned up when the display
      * is destroyed, as they're attached to it. We explicitly clean up
      * only what we need to. */

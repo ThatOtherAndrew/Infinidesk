@@ -10,6 +10,31 @@
 #define INFINIDESK_CONFIG_H
 
 #include <stdbool.h>
+#include <stdint.h>
+
+/*
+ * Keybind action type.
+ * A keybind either triggers a built-in compositor action or executes
+ * an external shell command.
+ */
+enum keybind_type {
+    KEYBIND_ACTION, /* Built-in compositor action (e.g. "close_window") */
+    KEYBIND_EXEC,   /* Execute external command (e.g. "exec:kitty") */
+};
+
+/*
+ * A single keybinding definition.
+ * Parsed from the [keybinds] section of the config file.
+ *
+ * The modifier field is a bitmask of WLR_MODIFIER_* values.
+ * The key field is an XKB keysym (xkb_keysym_t is uint32_t).
+ */
+struct keybind {
+    uint32_t modifiers; /* WLR_MODIFIER_* bitmask */
+    uint32_t key;       /* XKB keysym */
+    enum keybind_type type;
+    char *value; /* Action name or shell command */
+};
 
 /*
  * Configuration structure.
@@ -21,6 +46,10 @@ struct infinidesk_config {
 
     /* Output scale factor (HiDPI scaling) */
     float scale;
+
+    /* Keybindings */
+    struct keybind *keybinds;
+    int keybind_count;
 };
 
 /*

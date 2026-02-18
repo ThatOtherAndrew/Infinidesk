@@ -28,6 +28,7 @@
 #include <wlr/backend/session.h>
 
 #include "infinidesk/canvas.h"
+#include "infinidesk/config.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/switcher.h"
 
@@ -130,6 +131,10 @@ struct infinidesk_server {
     uint32_t next_view_id;
     /* Output scale factor (from config) */
     float output_scale;
+
+    /* Configurable keybindings (owned by the server, freed on shutdown) */
+    struct keybind *keybinds;
+    int keybind_count;
 };
 
 /*

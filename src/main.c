@@ -32,13 +32,18 @@ static void print_usage(const char *prog_name) {
             "\n"
             "Infinidesk is an infinite canvas Wayland compositor.\n"
             "\n"
-            "Keybindings:\n"
-            "  Alt + Enter        Launch terminal (kitty)\n"
-            "  Alt + Q            Close focused window\n"
-            "  Alt + Escape       Exit compositor\n"
-            "  Alt + Left-drag    Move window\n"
-            "  Alt + Right-drag   Pan canvas\n"
-            "  Alt + Scroll       Zoom canvas\n",
+            "Default keybindings (configurable in "
+            "~/.config/infinidesk/infinidesk.toml):\n"
+            "  Super + Return     Launch terminal (kitty)\n"
+            "  Super + Q          Close focused window\n"
+            "  Super + Escape     Exit compositor\n"
+            "  Super + D          Toggle drawing mode\n"
+            "  Super + G          Gather windows\n"
+            "  Alt + Tab          Window switcher\n"
+            "  Super + Left-drag  Move window\n"
+            "  Super + Right-drag Pan canvas\n"
+            "  Super + Scroll     Zoom canvas\n"
+            "  Ctrl + Alt + F1-12 Switch VT\n",
             prog_name);
 }
 
@@ -95,6 +100,16 @@ int main(int argc, char *argv[]) {
         /* server.output_scale already set to 1.0f in server_init */
     } else {
         server.output_scale = config.scale;
+
+        /*
+         * Transfer keybind ownership from config to server.
+         * We steal the pointer so config_free() won't free it while
+         * the server is still running.
+         */
+        server.keybinds = config.keybinds;
+        server.keybind_count = config.keybind_count;
+        config.keybinds = NULL;
+        config.keybind_count = 0;
     }
 
     /* Start the backend */

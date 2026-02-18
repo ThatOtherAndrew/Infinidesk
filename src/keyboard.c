@@ -9,6 +9,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <wlr/backend/session.h>
@@ -17,6 +18,7 @@
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include "infinidesk/config.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/keyboard.h"
 #include "infinidesk/output.h"
@@ -163,12 +165,46 @@ void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 }
 
 /*
- * Handle Alt+Tab window switching.
- * Uses the Cairo-based switcher overlay.
- * Each press of Tab whilst Alt is held cycles to the next window;
- * releasing Alt confirms the selection.
+ * Compositor action dispatch table.
+ * Maps action name strings (from the config) to handler functions.
  */
-static void handle_window_switcher(struct infinidesk_server *server) {
+typedef void (*action_fn)(struct infinidesk_server *server);
+
+static void action_close_window(struct infinidesk_server *server) {
+    if (!wl_list_empty(&server->views)) {
+        struct infinidesk_view *view =
+            wl_container_of(server->views.next, view, link);
+        wlr_log(WLR_DEBUG, "Closing focused view %p", (void *)view);
+        view_close(view);
+    }
+}
+
+static void action_exit(struct infinidesk_server *server) {
+    wlr_log(WLR_INFO, "Exiting compositor");
+    wl_display_terminate(server->wl_display);
+}
+
+static void action_toggle_drawing(struct infinidesk_server *server) {
+    drawing_toggle_mode(&server->drawing);
+}
+
+static void action_clear_drawings(struct infinidesk_server *server) {
+    drawing_clear_all(&server->drawing);
+}
+
+static void action_undo_stroke(struct infinidesk_server *server) {
+    drawing_undo_last(&server->drawing);
+}
+
+static void action_redo_stroke(struct infinidesk_server *server) {
+    drawing_redo_last(&server->drawing);
+}
+
+static void action_gather_windows(struct infinidesk_server *server) {
+    views_gather(server, 20.0); /* 20px minimum gap */
+}
+
+static void action_window_switcher(struct infinidesk_server *server) {
     if (!server->switcher.active) {
         switcher_start(&server->switcher);
     } else {
@@ -176,25 +212,53 @@ static void handle_window_switcher(struct infinidesk_server *server) {
     }
 }
 
+static const struct {
+    const char *name;
+    action_fn fn;
+} action_table[] = {
+    {"close_window", action_close_window},
+    {"exit", action_exit},
+    {"toggle_drawing", action_toggle_drawing},
+    {"clear_drawings", action_clear_drawings},
+    {"undo_stroke", action_undo_stroke},
+    {"redo_stroke", action_redo_stroke},
+    {"gather_windows", action_gather_windows},
+    {"window_switcher", action_window_switcher},
+};
+#define ACTION_TABLE_SIZE (sizeof(action_table) / sizeof(action_table[0]))
+
+/*
+ * Look up and execute a compositor action by name.
+ * Returns true if the action was found and executed.
+ */
+static bool dispatch_action(struct infinidesk_server *server,
+                            const char *name) {
+    for (size_t i = 0; i < ACTION_TABLE_SIZE; i++) {
+        if (strcmp(name, action_table[i].name) == 0) {
+            action_table[i].fn(server);
+            return true;
+        }
+    }
+    wlr_log(WLR_ERROR, "Unknown keybind action: %s", name);
+    return false;
+}
+
+/*
+ * Execute a shell command in a forked process.
+ */
+static void exec_command(const char *command) {
+    wlr_log(WLR_INFO, "Executing: %s", command);
+    if (fork() == 0) {
+        execl("/bin/sh", "/bin/sh", "-c", command, (char *)NULL);
+        _exit(EXIT_FAILURE);
+    }
+}
+
 bool keyboard_handle_keybinding(struct infinidesk_server *server,
                                 uint32_t modifiers, xkb_keysym_t sym) {
     /*
-     * Compositor keybindings:
-     * - Ctrl + Alt + F1-F12: Switch virtual terminal
-     * - Alt + Tab:      Cycle windows (release Alt to confirm)
-     * - Super + Enter:  Launch terminal (kitty)
-     * - Super + Q:      Close focused window
-     * - Super + Escape: Exit compositor
-     * - Super + D:      Toggle drawing mode
-     * - Super + C:      Clear all drawings
-     * - Super + U:      Undo last stroke
-     * - Super + G:      Gather windows to centre
-     * - Super + R:      Redo last stroke
-     */
-
-    /*
      * Ctrl + Alt + F1-F12: Switch to another virtual terminal.
-     * Only works when running on real hardware with a session (not nested).
+     * This is hardcoded (not configurable) as it is a system-level function.
      */
     if ((modifiers & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) ==
         (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) {
@@ -208,76 +272,27 @@ bool keyboard_handle_keybinding(struct infinidesk_server *server,
         }
     }
 
-    /* Alt + Tab: Cycle through windows (release Alt to confirm) */
-    if ((modifiers & WLR_MODIFIER_ALT) && sym == XKB_KEY_Tab) {
-        handle_window_switcher(server);
-        return true;
-    }
+    /* Check configurable keybindings */
+    for (int i = 0; i < server->keybind_count; i++) {
+        const struct keybind *kb = &server->keybinds[i];
 
-    /* Check for Super modifier */
-    if (!(modifiers & WLR_MODIFIER_LOGO)) {
-        return false;
-    }
+        if (kb->key != (uint32_t)sym) {
+            continue;
+        }
+        if ((modifiers & kb->modifiers) != kb->modifiers) {
+            continue;
+        }
 
-    switch (sym) {
-    case XKB_KEY_Return:
-    case XKB_KEY_KP_Enter:
-        /* Super + Enter: Launch terminal */
-        wlr_log(WLR_INFO, "Launching terminal");
-        if (fork() == 0) {
-            execl("/bin/sh", "/bin/sh", "-c", "kitty", (char *)NULL);
-            _exit(EXIT_FAILURE);
+        switch (kb->type) {
+        case KEYBIND_ACTION:
+            dispatch_action(server, kb->value);
+            break;
+        case KEYBIND_EXEC:
+            exec_command(kb->value);
+            break;
         }
         return true;
-
-    case XKB_KEY_q:
-    case XKB_KEY_Q:
-        /* Super + Q: Close focused window */
-        if (!wl_list_empty(&server->views)) {
-            struct infinidesk_view *view =
-                wl_container_of(server->views.next, view, link);
-            wlr_log(WLR_DEBUG, "Closing focused view %p", (void *)view);
-            view_close(view);
-        }
-        return true;
-
-    case XKB_KEY_g:
-    case XKB_KEY_G:
-        /* Super + G: Gather all windows to center */
-        views_gather(server, 20.0); /* 20px minimum gap */
-        return true;
-
-    case XKB_KEY_Escape:
-        /* Super + Escape: Exit compositor */
-        wlr_log(WLR_INFO, "Exiting compositor");
-        wl_display_terminate(server->wl_display);
-        return true;
-
-    case XKB_KEY_d:
-    case XKB_KEY_D:
-        /* Super + D: Toggle drawing mode */
-        drawing_toggle_mode(&server->drawing);
-        return true;
-
-    case XKB_KEY_c:
-    case XKB_KEY_C:
-        /* Super + C: Clear all drawings */
-        drawing_clear_all(&server->drawing);
-        return true;
-
-    case XKB_KEY_u:
-    case XKB_KEY_U:
-        /* Super + U: Undo last stroke */
-        drawing_undo_last(&server->drawing);
-        return true;
-
-    case XKB_KEY_r:
-    case XKB_KEY_R:
-        /* Super + R: Redo last stroke */
-        drawing_redo_last(&server->drawing);
-        return true;
-
-    default:
-        return false;
     }
+
+    return false;
 }
