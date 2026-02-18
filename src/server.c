@@ -33,6 +33,7 @@
 #include "infinidesk/cursor.h"
 #include "infinidesk/drawing.h"
 #include "infinidesk/input.h"
+#include "infinidesk/keyboard.h"
 #include "infinidesk/layer_shell.h"
 #include "infinidesk/output.h"
 #include "infinidesk/server.h"
@@ -238,12 +239,6 @@ void server_run(struct infinidesk_server *server) {
 void server_finish(struct infinidesk_server *server) {
     wlr_log(WLR_DEBUG, "Cleaning up server resources");
 
-    /* Destroy views */
-    struct infinidesk_view *view, *view_tmp;
-    wl_list_for_each_safe(view, view_tmp, &server->views, link) {
-        view_destroy(view);
-    }
-
     /* Clean up drawing layer */
     drawing_finish(&server->drawing);
 
@@ -260,11 +255,41 @@ void server_finish(struct infinidesk_server *server) {
         server->keybind_count = 0;
     }
 
-    /* Note: Most resources are automatically cleaned up when the display
-     * is destroyed, as they're attached to it. We explicitly clean up
-     * only what we need to. */
-
+    /*
+     * Destroy all clients first. This triggers the normal teardown path:
+     * wlroots fires destroy signals for XDG toplevels, layer surfaces, etc.,
+     * and our handlers (handle_destroy, handle_layer_surface_destroy) clean
+     * up the corresponding wrapper structs.
+     *
+     * We must NOT manually destroy views beforehand — doing so frees them
+     * before wlroots has torn down the underlying protocol objects, causing
+     * use-after-free when wlroots fires callbacks during client teardown.
+     */
     wl_display_destroy_clients(server->wl_display);
+
+    /*
+     * Detach all keyboard listeners before destroying the display.
+     *
+     * During wl_display_destroy(), the backend is torn down, which calls
+     * wlr_keyboard_finish() on each hardware keyboard. That function emits
+     * key-release events for any held keys, invoking our keyboard_handle_key()
+     * listener — but by that point the seat and other server state may already
+     * be partially destroyed, causing a use-after-free crash.
+     *
+     * Since clients are already destroyed above and we no longer need keyboard
+     * input, it is safe to remove the listeners and free the structs now.
+     */
+    struct infinidesk_keyboard *kb, *kb_tmp;
+    wl_list_for_each_safe(kb, kb_tmp, &server->keyboards, link) {
+        wl_list_remove(&kb->key.link);
+        wl_list_remove(&kb->modifiers.link);
+        wl_list_remove(&kb->destroy.link);
+        wl_list_remove(&kb->link);
+        free(kb);
+    }
+
+    /* Most remaining resources are cleaned up when the display is destroyed,
+     * as they're attached to it. */
     wl_display_destroy(server->wl_display);
 }
 
