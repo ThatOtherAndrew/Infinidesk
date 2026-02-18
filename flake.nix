@@ -59,11 +59,6 @@
             valgrind
             clang-tools  # clangd, clang-format
             bear         # Generate compile_commands.json
-
-            # Testing
-            kitty
-            foot
-            weston
           ];
 
           shellHook = ''
