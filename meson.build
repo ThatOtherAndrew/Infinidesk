@@ -104,3 +104,8 @@ executable('infinidesk',
   ],
   install: true,
 )
+
+install_data(
+  'infinidesk.desktop',
+  install_dir: get_option('datadir') / 'wayland-sessions',
+)

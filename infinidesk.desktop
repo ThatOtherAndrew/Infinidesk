@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Infinidesk
+Comment=Infinite Canvas Wayland Compositor
+Exec=infinidesk
+Type=Application
+DesktopNames=Infinidesk
+Keywords=wayland;desktop;

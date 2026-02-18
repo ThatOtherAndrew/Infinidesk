@@ -17,7 +17,12 @@
             pname = "infinidesk";
             version = "0.1.0";
 
-            src = ./.;
+            src = pkgs.lib.cleanSourceWith {
+              src = ./.;
+              filter = path: type:
+                let baseName = baseNameOf (toString path);
+                in !builtins.elem baseName [ "build" "result" ".cache" ];
+            };
 
             nativeBuildInputs = with pkgs; [
               meson
@@ -37,6 +42,8 @@
               pango
               libdrm
             ];
+
+            passthru.providedSessions = [ "infinidesk" ];
 
             meta = with pkgs.lib; {
               description = "Infinite canvas Wayland compositor";
